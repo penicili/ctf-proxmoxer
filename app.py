@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 
 from config.settings import settings
 from core import logger, engine, Base
-from models import Deployment
+from models import Level, Challenge, Deployment
 from services import ProxmoxService
 
 
@@ -31,7 +31,7 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down CTF Platform...")
-    proxmox_service.disconnect()
+    # proxmox_service.disconnect()
 
 
 app = FastAPI(

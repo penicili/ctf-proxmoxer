@@ -37,6 +37,23 @@ def test_proxmox():
     logger.info(f"\n📋 Listing VMs/Containers...")
     vms = proxmox.list_vms()
     
+    # Test create vm with dummy config data
+    logger.info(f"Creating test VM with dummy config data...")
+    testvm = proxmox.create_vm({
+        "team": "TestTeam",
+        "challenge": "TestChallenge",
+        "time": "90"
+    })
+    if testvm:
+        logger.success(f"✅ Test VM created: VMID {testvm}")
+    
+    # logger.info(f"stopping test vm")
+    # if proxmox.stop_vm(testvm):
+    #     logger.success(f"✅ Test VM stopped: VMID {testvm}")
+    # else:
+    #     logger.error(f"❌ Failed to stop Test VM: VMID {testvm}")
+    
+    
     if vms:
         logger.info(f"\n✅ Found {len(vms)} VMs/Containers:\n")
         
