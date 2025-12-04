@@ -12,6 +12,7 @@ paramiko
 
 # config
 pydantic
+pydantic-settings
 python-dotenv
 
 # logging
