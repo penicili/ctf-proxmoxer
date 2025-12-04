@@ -1,0 +1,21 @@
+# web
+uvicorn
+fastapi
+
+# database
+sqlalchemy
+alembic
+
+# core proxmox & ssh
+proxmoxer
+paramiko
+
+# config
+pydantic
+python-dotenv
+
+# logging
+loguru
+
+# testing
+httpie
