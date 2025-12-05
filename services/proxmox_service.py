@@ -3,10 +3,15 @@ Proxmox Service
 Mengelola koneksi dan operasi dengan Proxmox VE
 """
 from proxmoxer import ProxmoxAPI
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TypedDict
 from config.settings import settings
 from core.logging import logger
 
+
+class vm_result(TypedDict):
+    status: str
+    vmid: Optional[int]
+    info: Optional[Dict[str, Any]]
 
 class ProxmoxService:
     """Service untuk mengelola koneksi dan operasi Proxmox"""
@@ -94,22 +99,25 @@ class ProxmoxService:
             logger.error(f"Failed to list VMs: {str(e)}")
             return []
 
-    def create_vm(self, config: Dict[str, Any]) -> Optional[int]:
+    def create_vm(self, level_id: int, team: str, time_limit: int, config: Dict[str, Any]) -> Optional[vm_result]:
         """
         Membuat VM/Container baru berdasarkan konfigurasi
         
         Args:
+            level_id (int): ID level challenge
+            team (str): Nama tim
+            time_limit (int): Batas waktu dalam menit
             config (Dict[str, Any]): Konfigurasi VM/Container
             
         Returns:
-            Optional[int]: VMID dari VM/Container yang dibuat, None jika gagal
+            Optional[Dict[str, Any]]: Info VM yang dibuat, None jika gagal
         """
         
-        team = config.get("team", "unknown")
-        challenge = config.get("challenge", "unknown")
-        time_minutes = config.get("time", "120")
+        # sanitize inputs
+        team = team.strip()
+        time_limit = max(1, time_limit)  # minimal 1 menit
         
-        logger.info(f"Creating VM for team '{team}', challenge '{challenge}' with time limit of {time_minutes} minutes...")
+        logger.info(f"Creating VM for team '{team}', level '{level_id}' with time limit of {time_limit} minutes...")
         
         try:
             if not self.is_connected():
@@ -122,7 +130,7 @@ class ProxmoxService:
                 logger.error("Failed to get next available VMID")
                 return None
             
-            vm_name = f"{team}-{challenge}-{vmid}"
+            vm_name = f"{team}-{level_id}-{vmid}"
             
             # Create VM configuration
             vm_config = {
@@ -132,7 +140,7 @@ class ProxmoxService:
                 'cores': config.get('cores', 1),
                 'net0': 'virtio,bridge=vmbr0',
                 'ide2': f"{config.get('iso', 'local:iso/ubuntu-24.04.3-live-server-amd64.iso')},media=cdrom",
-                'scsi0': f"local-lvm:{config.get('disk_size', 20)}",
+                'scsi0': f"local-lvm:{config.get('disk_size', 10)}",
                 'scsihw': 'virtio-scsi-pci',
                 'boot': 'cdn'
             }
@@ -145,13 +153,18 @@ class ProxmoxService:
             start_task = self.proxmox.nodes(self.node).qemu(vmid).status.start.post()
             logger.success(f"✅ VM {vmid} ({vm_name}) created and started successfully")
             
-            return vmid
+            # get vm info
+            vm_info = self._get_vm_info(vmid)
+            return {
+                "status": "success",
+                "vmid": vmid,
+                "info": vm_info
+            }
             
         except Exception as e:
             logger.error(f"Failed to create VM: {str(e)}")
             return None
         
-        pass
 
     def _get_next_vmid(self) -> Optional[int]:
         """
@@ -217,6 +230,27 @@ class ProxmoxService:
             logger.error(f"Failed to stop VM {vmid}: {str(e)}")
             return False
 
+    def _get_vm_info(self, vmid: int) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed info of a VM/Container by VMID
+        
+        Args:
+            vmid (int): VMID of the VM/Container
+            
+        Returns:
+            Optional[Dict[str, Any]]: VM info dictionary, None if not found
+        """
+        try:
+            if not self.is_connected():
+                logger.error("Not connected to Proxmox")
+                return None
+            
+            vm_info = self.proxmox.nodes(self.node).qemu(vmid).config.get()
+            return vm_info
+            
+        except Exception as e:
+            logger.error(f"Failed to get info for VM {vmid}: {str(e)}")
+            return None
     
 # Global instance
 proxmox_service = ProxmoxService()

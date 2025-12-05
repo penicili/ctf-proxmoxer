@@ -5,6 +5,7 @@ fastapi
 # database
 sqlalchemy
 alembic
+pymysql
 
 # core proxmox & ssh
 proxmoxer

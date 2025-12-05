@@ -39,11 +39,12 @@ def test_proxmox():
     
     # Test create vm with dummy config data
     logger.info(f"Creating test VM with dummy config data...")
-    testvm = proxmox.create_vm({
-        "team": "TestTeam",
-        "challenge": "TestChallenge",
-        "time": "90"
-    })
+    testvm = proxmox.create_vm(
+        team="test-team",
+        level_id=1,
+        time_limit=30,
+        config={ "memory": 256, "cores": 1 }
+    )
     if testvm:
         logger.success(f"✅ Test VM created: VMID {testvm}")
     
