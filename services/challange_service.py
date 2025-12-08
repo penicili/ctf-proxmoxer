@@ -43,16 +43,18 @@ class ChallengeService:
         # TODO: Implement challenge creation logic
         
         # Create VM via ProxmoxService
-        try:
-            vm = self.proxmox_service.create_vm(
-                level_id=level_id,
-                team=team_name,
-                time_limit=60,
-                config={}
-            )
-            
-        except Exception as e:
-            logger.error(f"Error creating VM for team '{team_name}': {e}")
+        vm = self.proxmox_service.create_vm(
+            level_id=level_id,
+            team=team_name,
+            time_limit=60,
+            config={}
+        )
+        
+        if not vm:
+            logger.error(f"Failed to create VM for team '{team_name}' and level '{level_id}'")
+            raise Exception("VM creation failed")
+        
+
 
         # Create Deployment record di db
         
@@ -60,8 +62,6 @@ class ChallengeService:
             level_id=level_id,
             team=team_name,
             vm_id=vm['vmid'],
-            ip_address=vm['info']['ip_address'],
-            port=vm['info']['port'],
             is_active=True
         )
             
