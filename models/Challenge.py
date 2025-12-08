@@ -1,7 +1,7 @@
 """
 Challenge yang telah dibuat serta relasi dengan level dan deployment
 """
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean, DateTime, ForeignKey, func
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -26,14 +26,14 @@ class Challenge(Base):
     # Flag Management
     flag = Column(String(255), nullable=True, unique=True, index=True) 
     flag_submitted = Column(Boolean, default=False, nullable=False)
-    flag_submitted_at = Column(DateTime, nullable=True)
+    flag_submitted_at = Column(TIMESTAMP, nullable=True)
     
     # Status
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
+    updated_at = Column(TIMESTAMP, server_default=func.now(), server_onupdate=func.now(), nullable=False)
     
     # Relationships
     level = relationship("Level", back_populates="challenges")  # Many-to-One

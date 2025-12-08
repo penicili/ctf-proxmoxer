@@ -6,12 +6,9 @@ from proxmoxer import ProxmoxAPI
 from typing import Optional, List, Dict, Any, TypedDict
 from config.settings import settings
 from core.logging import logger
+from schemas.types import vm_result
 
 
-class vm_result(TypedDict):
-    status: str
-    vmid: Optional[int]
-    info: Optional[Dict[str, Any]]
 
 class ProxmoxService:
     """Service untuk mengelola koneksi dan operasi Proxmox"""

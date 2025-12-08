@@ -9,7 +9,8 @@ from models import Challenge, Deployment, Level
 from services.proxmox_service import ProxmoxService
 from core.logging import logger
 from core.database import SessionLocal
-
+from config.settings import settings
+import random
 
 class ChallengeService:
     """
@@ -18,7 +19,7 @@ class ChallengeService:
     """
     
     def __init__(self):
-        # TODO: panggil database dan proxmoxservice
+        # panggil database dan proxmoxservice
         self.proxmox_service = ProxmoxService()
         self.db = SessionLocal()
         pass
@@ -42,23 +43,44 @@ class ChallengeService:
         # TODO: Implement challenge creation logic
         
         # Create VM via ProxmoxService
-        vm = self.proxmox_service.create_vm(
+        # vm = self.proxmox_service.create_vm(
+        #     level_id=level_id,
+        #     team=team_name,
+        #     time_limit=60,
+        #     config={}
+        # )
+        
+        # if vm:
+        #     logger.info(f"Challenge VM created with VMID: {vm['vmid']}")
+        #     return [{
+        #         "status": "success",
+        #         "vmid": vm["vmid"],
+        #         "info": vm["info"]
+        #     }]
+            
+        # TODO: Simpan ke deployment database dan challenge database
+        # TODO: Generate flag unik untuk challenge
+        
+        # Randomize flag
+        flag_length = settings.FLAG_LENGTH
+        flag_charset = settings.FLAG_CHARSET
+        flag_prefix = settings.FLAG_PREFIX
+        random_flag = ''.join(random.choices(flag_charset, k=flag_length))
+        flagstring = f"{flag_prefix}{{{random_flag}}}"
+        
+        new_challenge = Challenge(
             level_id=level_id,
             team=team_name,
-            time_limit=60,
-            config={}
+            flag=flagstring,
+            flag_submitted=False,
+            is_active=True
         )
         
-        if vm:
-            logger.info(f"Challenge VM created with VMID: {vm['vmid']}")
-            return [{
-                "status": "success",
-                "vmid": vm["vmid"],
-                "info": vm["info"]
-            }]
-            
-        # Simpan ke deployment database dan challenge database
-        
+        self.db.add(new_challenge)
+        self.db.commit()
+        self.db.refresh(new_challenge)
+        logger.info(f"Challenge created for team '{team_name}' with ID: {new_challenge.id} and flag: {new_challenge.flag}")
+
         return []
     
     def submit_challenge(self, challenge_id: int, flag: str) -> list[Dict[str, Any]]:

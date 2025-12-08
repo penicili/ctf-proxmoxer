@@ -1,8 +1,8 @@
 """init db
 
-Revision ID: ee56964c4b55
+Revision ID: cce6fec59ea0
 Revises: 
-Create Date: 2025-12-05 15:49:40.397444
+Create Date: 2025-12-08 15:51:32.503730
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'ee56964c4b55'
+revision: str = 'cce6fec59ea0'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -45,10 +45,10 @@ def upgrade() -> None:
     sa.Column('team', sa.String(length=100), nullable=False),
     sa.Column('flag', sa.String(length=255), nullable=True),
     sa.Column('flag_submitted', sa.Boolean(), nullable=False),
-    sa.Column('flag_submitted_at', sa.DateTime(), nullable=True),
+    sa.Column('flag_submitted_at', sa.TIMESTAMP(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['level_id'], ['levels.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
