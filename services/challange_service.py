@@ -22,7 +22,6 @@ class ChallengeService:
         # panggil database dan proxmoxservice
         self.proxmox_service = ProxmoxService()
         self.db = SessionLocal()
-        pass
     
     def __del__ (self):
         """
@@ -30,7 +29,7 @@ class ChallengeService:
         """
         self.db.close()
     
-    def create_challenge(self, level_id: int, team_name: str) -> list[Dict[str, Any]]:
+    def create_challenge(self, level_id: int, team_name: str) -> Dict[str, Any]:
         """Create challenge
 
         Args:
@@ -38,9 +37,8 @@ class ChallengeService:
             team_name (str): nama tim
 
         Returns:
-            list[Dict[str, Any]]: Status Message, IP dan port VM
+            Dict[str, Any]: info challenge dan vm terkait
         """
-        # TODO: Implement challenge creation logic
         
         # Create VM via ProxmoxService
         vm = self.proxmox_service.create_vm(
@@ -55,7 +53,6 @@ class ChallengeService:
             raise Exception("VM creation failed")
         
 
-
         # Create Deployment record di db
         
         new_deployment = Deployment(
@@ -64,9 +61,10 @@ class ChallengeService:
             vm_id=vm['vmid'],
             is_active=True
         )
-            
-        # TODO: Simpan ke deployment database dan challenge database
-        # TODO: Generate flag unik untuk challenge
+        
+        self.db.add(new_deployment)
+        self.db.commit()
+        self.db.refresh(new_deployment)
         
         # Randomize flag
         flag_length = settings.FLAG_LENGTH
@@ -88,14 +86,20 @@ class ChallengeService:
         self.db.refresh(new_challenge)
         logger.info(f"Challenge created for team '{team_name}' with ID: {new_challenge.id} and flag: {new_challenge.flag}")
 
-        return []
+
+        # TODO: return apalah ini biar nggak kosong gitu dianuin
+        return {
+            "message": "Challenge created successfully",
+            "challenge_id": new_challenge.id,
+            "vm_info": vm
+        }
     
-    def submit_challenge(self, challenge_id: int, flag: str) -> list[Dict[str, Any]]:
+    def submit_challenge(self, challenge_id: int, flag: str) -> Dict[str, Any]:
         # TODO: Buat challenge submission logic
-        return []
+        return {}
     
-    def get_all(self) -> list[Dict[str, Any]]:
+    def get_all(self) -> Dict[str, Any]:
         # TODO: ambil semua challenge dari database juga vm yang terkati dari proxmoxservice
-        return []
+        return {}
     
     

@@ -1,2 +1,2 @@
-from .Vm_types import Vm_result
-from .Challenge_types import Challenge_result
+from .Vm_types import VmResultType
+from .Challenge_types import ChallengeResultType

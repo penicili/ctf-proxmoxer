@@ -7,7 +7,7 @@ from proxmoxer import ProxmoxAPI
 from typing import Optional, List, Dict, Any
 from config.settings import settings
 from core.logging import logger
-from schemas.types import Vm_result
+from schemas.types import VmResultType
 
 
 class ProxmoxService:
@@ -123,7 +123,7 @@ class ProxmoxService:
         team: str, 
         time_limit: int, 
         config: Dict[str, Any]
-    ) -> Vm_result:
+    ) -> VmResultType:
         """
         Membuat VM/Container baru berdasarkan konfigurasi
         
@@ -134,7 +134,7 @@ class ProxmoxService:
             config: Konfigurasi VM/Container
             
         Returns:
-            Vm_result: Hasil pembuatan VM/Container
+            VmResultType: Hasil pembuatan VM/Container
             
         Raises:
             ConnectionError: If not connected to Proxmox

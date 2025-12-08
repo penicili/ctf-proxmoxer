@@ -1,6 +1,6 @@
 from typing import TypedDict, Optional, Dict, Any
 
-class Vm_result(TypedDict):
+class VmResultType(TypedDict):
     status: str
     vmid: Optional[int]
     info: Optional[Dict[str, Any]]
