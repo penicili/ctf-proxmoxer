@@ -403,3 +403,34 @@
 ============================================================
 2025-12-04 14:24:33 | SUCCESS  | __main__:test_proxmox:77 - ✅ Test completed!
 2025-12-04 14:24:33 | INFO     | __main__:test_proxmox:78 - ============================================================
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:13 - ============================================================
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:14 - Testing Proxmox - List VMs
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:15 - ============================================================
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:18 - 
+📋 Configuration:
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:19 -   Host: 100.104.24.85
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:20 -   User: root@pam
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:21 -   Node: pve
+2025-12-08 14:22:45 | INFO     | __main__:test_proxmox:27 - 
+🔌 Connecting to Proxmox...
+2025-12-08 14:22:45 | INFO     | services.proxmox_service:connect:31 - Connecting to Proxmox at 100.104.24.85...
+2025-12-08 14:22:46 | SUCCESS  | services.proxmox_service:connect:42 - ✅ Connected to Proxmox VE 9.1.1 at 100.104.24.85
+2025-12-08 14:22:46 | INFO     | __main__:test_proxmox:37 - 
+📋 Listing VMs/Containers...
+2025-12-08 14:22:47 | INFO     | services.proxmox_service:list_vms:95 - Found 2 VMs/Containers
+2025-12-08 14:22:47 | INFO     | __main__:test_proxmox:41 - Creating test VM with dummy config data...
+2025-12-08 14:22:47 | INFO     | services.proxmox_service:create_vm:120 - Creating VM for team 'test-team', level '1' with time limit of 30 minutes...
+2025-12-08 14:22:48 | INFO     | services.proxmox_service:create_vm:150 - VM creation task started: UPID:pve:00002F46:00065FE8:69367CCA:qmcreate:102:root@pam:
+2025-12-08 14:22:49 | SUCCESS  | services.proxmox_service:create_vm:154 - ✅ VM 102 (test-team-1-102) created and started successfully
+2025-12-08 14:22:49 | SUCCESS  | __main__:test_proxmox:49 - ✅ Test VM created: VMID {'status': 'success', 'vmid': 102, 'info': {'boot': 'cdn', 'name': 'test-team-1-102', 'digest': '87ff91755219aef7ec99d948567035cfc4552afb', 'vmgenid': 'b9c32d44-6bcc-40a9-abd9-484722033d19', 'memory': '256', 'ide2': 'local:iso/ubuntu-24.04.3-live-server-amd64.iso,media=cdrom,size=3226020K', 'scsi0': 'local-lvm:vm-102-disk-0,size=10G', 'net0': 'virtio=BC:24:11:C1:94:5F,bridge=vmbr0', 'smbios1': 'uuid=52f4f89c-78ef-4ec1-b14b-a6e02ba96243', 'meta': 'creation-qemu=10.1.2,ctime=1765178570', 'cores': 1, 'scsihw': 'virtio-scsi-pci'}}
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:59 - 
+✅ Found 2 VMs/Containers:
+
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:71 - 
+🔴 Stopped (2):
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:73 -    VMID 100: ubuntu-servertest              [qemu]
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:73 -    VMID 101: TestTeam-TestChallenge-101     [qemu]
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:77 - 
+============================================================
+2025-12-08 14:22:49 | SUCCESS  | __main__:test_proxmox:78 - ✅ Test completed!
+2025-12-08 14:22:49 | INFO     | __main__:test_proxmox:79 - ============================================================
