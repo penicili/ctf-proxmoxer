@@ -2,12 +2,12 @@
 Proxmox Service
 Mengelola koneksi dan operasi dengan Proxmox VE
 """
+
 from proxmoxer import ProxmoxAPI
-from typing import Optional, List, Dict, Any, TypedDict
+from typing import Optional, List, Dict, Any
 from config.settings import settings
 from core.logging import logger
-from schemas.types import vm_result
-
+from schemas.types import Vm_result
 
 
 class ProxmoxService:
@@ -16,7 +16,21 @@ class ProxmoxService:
     def __init__(self):
         self.proxmox: Optional[ProxmoxAPI] = None
         self.node = settings.PROXMOX_NODE
+    
+    def _ensure_connected(self) -> ProxmoxAPI:
+        """
+        Ensure Proxmox connection is active
         
+        Returns:
+            ProxmoxAPI: Active Proxmox API instance
+            
+        Raises:
+            ConnectionError: If not connected to Proxmox
+        """
+        if self.proxmox is None:
+            raise ConnectionError("Not connected to Proxmox. Call connect() first.")
+        return self.proxmox
+    
     def connect(self) -> bool:
         """
         Membuat koneksi ke Proxmox server
@@ -34,14 +48,15 @@ class ProxmoxService:
                 verify_ssl=settings.PROXMOX_VERIFY_SSL
             )
             
-            # Test connection dengan get version
-            version = self.proxmox.version.get()
-            logger.success(f"✅ Connected to Proxmox VE {version['version']} at {settings.PROXMOX_HOST}")
+            try:
+                version = self.proxmox.version.get()
+            except Exception as e:
+                logger.exception(f"Failed to get Proxmox version")
             
             return True
             
         except Exception as e:
-            logger.error(f"❌ Failed to connect to Proxmox: {str(e)}")
+            logger.exception("Failed to connect to Proxmox")
             self.proxmox = None
             return False
     
@@ -57,75 +72,88 @@ class ProxmoxService:
             List of VMs/Containers dengan info: vmid, name, status, type
         """
         try:
-            if not self.is_connected():
-                logger.warning("Not connected to Proxmox")
-                return []
+            
+            proxmox = self._ensure_connected()
             
             all_vms = []
             
-            # Get QEMU VMs
             try:
-                qemu_vms = self.proxmox.nodes(self.node).qemu.get()
-                for vm in qemu_vms:
-                    all_vms.append({
-                        "vmid": vm.get("vmid"),
-                        "name": vm.get("name"),
-                        "status": vm.get("status"),
-                        "type": "qemu",
-                    })
+                qemu_vms = proxmox.nodes(self.node).qemu.get()  
+                if qemu_vms is not None:
+                    for vm in qemu_vms:
+                        all_vms.append({
+                            "vmid": vm.get("vmid"),
+                            "name": vm.get("name"),
+                            "status": vm.get("status"),
+                            "type": "qemu",
+                        })
+                else:
+                    logger.warning("No QEMU VMs found")
             except Exception as e:
                 logger.warning(f"Failed to get QEMU VMs: {str(e)}")
             
-            # Get LXC Containers
             try:
-                lxc_containers = self.proxmox.nodes(self.node).lxc.get()
-                for container in lxc_containers:
-                    all_vms.append({
-                        "vmid": container.get("vmid"),
-                        "name": container.get("name"),
-                        "status": container.get("status"),
-                        "type": "lxc",
-                    })
+                lxc_containers = proxmox.nodes(self.node).lxc.get()  
+                if lxc_containers is not None:
+                    for container in lxc_containers:
+                        all_vms.append({
+                            "vmid": container.get("vmid"),
+                            "name": container.get("name"),
+                            "status": container.get("status"),
+                            "type": "lxc",
+                        })
+                else:
+                    logger.warning("No LXC containers found")
             except Exception as e:
                 logger.warning(f"Failed to get LXC containers: {str(e)}")
             
             logger.info(f"Found {len(all_vms)} VMs/Containers")
             return all_vms
             
+        except ConnectionError as e:
+            logger.error(str(e))
+            return []
         except Exception as e:
             logger.error(f"Failed to list VMs: {str(e)}")
             return []
 
-    def create_vm(self, level_id: int, team: str, time_limit: int, config: Dict[str, Any]) -> Optional[vm_result]:
+    def create_vm(
+        self, 
+        level_id: int, 
+        team: str, 
+        time_limit: int, 
+        config: Dict[str, Any]
+    ) -> Vm_result:
         """
         Membuat VM/Container baru berdasarkan konfigurasi
         
         Args:
-            level_id (int): ID level challenge
-            team (str): Nama tim
-            time_limit (int): Batas waktu dalam menit
-            config (Dict[str, Any]): Konfigurasi VM/Container
+            level_id: ID level challenge
+            team: Nama tim
+            time_limit: Batas waktu dalam menit
+            config: Konfigurasi VM/Container
             
         Returns:
-            Optional[Dict[str, Any]]: Info VM yang dibuat, None jika gagal
+            Vm_result: Hasil pembuatan VM/Container
+            
+        Raises:
+            ConnectionError: If not connected to Proxmox
+            ValueError: If no VMID available
         """
-        
-        # sanitize inputs
+        # Sanitize inputs
         team = team.strip()
-        time_limit = max(1, time_limit)  # minimal 1 menit
+        time_limit = max(1, time_limit)
         
         logger.info(f"Creating VM for team '{team}', level '{level_id}' with time limit of {time_limit} minutes...")
         
         try:
-            if not self.is_connected():
-                logger.error("Not connected to Proxmox")
-                return None
+            proxmox = self._ensure_connected()
             
             # Get next available VMID
             vmid = self._get_next_vmid()
             if not vmid:
                 logger.error("Failed to get next available VMID")
-                return None
+                raise ValueError("No available VMID")
             
             vm_name = f"{team}-{level_id}-{vmid}"
             
@@ -143,15 +171,21 @@ class ProxmoxService:
             }
             
             # Create the VM
-            task = self.proxmox.nodes(self.node).qemu.post(**vm_config)
+            task = proxmox.nodes(self.node).qemu.post(**vm_config)  
             logger.info(f"VM creation task started: {task}")
             
             # Start the VM
-            start_task = self.proxmox.nodes(self.node).qemu(vmid).status.start.post()
-            logger.success(f"✅ VM {vmid} ({vm_name}) created and started successfully")
+            try:
+                start_task = proxmox.nodes(self.node).qemu(vmid).status.start.post()  
+                logger.success(f"VM {vmid} ({vm_name}) created and started successfully")
+            except Exception:
+                logger.exception(f"Failed to start VM {vmid} after creation, deleting VM")
+                proxmox.nodes(self.node).qemu(vmid).delete() 
+                raise
             
-            # get vm info
+            # Get vm info
             vm_info = self._get_vm_info(vmid)
+            
             return {
                 "status": "success",
                 "vmid": vmid,
@@ -159,95 +193,83 @@ class ProxmoxService:
             }
             
         except Exception as e:
-            logger.error(f"Failed to create VM: {str(e)}")
-            return None
-        
+            logger.exception("Failed to create VM")
+            raise
 
-    def _get_next_vmid(self) -> Optional[int]:
+    def _get_next_vmid(self) -> int:
         """
         Get next available VMID
-                
+        
         Returns:
-            Optional[int]: Next available VMID, None if failed
+            int: Next available VMID, None if failed
         """
         try:
-            if not self.is_connected():
-                return None
+            all_vms = self.list_vms()
             
-            # Get all existing VMIDs
-            existing_vmids = set()
-            
-            # Get QEMU VMIDs
-            try:
-                qemu_vms = self.proxmox.nodes(self.node).qemu.get()
-                for vm in qemu_vms:
-                    existing_vmids.add(vm.get("vmid"))
-            except Exception:
-                pass
-            
-            # Get LXC VMIDs
-            try:
-                lxc_containers = self.proxmox.nodes(self.node).lxc.get()
-                for container in lxc_containers:
-                    existing_vmids.add(container.get("vmid"))
-            except Exception:
-                pass
+            # Extract existing VMIDs
+            existing_vmids = {vm.get("vmid") for vm in all_vms if vm.get("vmid")}
             
             # Find next available VMID starting from 100
             for vmid in range(100, 10000):
                 if vmid not in existing_vmids:
+                    logger.debug(f"Found available VMID: {vmid}")
                     return vmid
             
-            return None
+            logger.error("No available VMID in range 100-9999")
+            raise ValueError("No available VMID")
             
         except Exception as e:
-            logger.error(f"Failed to get next VMID: {str(e)}")
-            return None
-
-    def stop_vm(self, vmid: int) -> bool:
+            logger.exception(f"Failed to get next VMID")
+            raise
+        
+    def stop_vm(self, vmid: int) -> Dict[str, Any]:
         """
         Stop a VM/Container by VMID
         
         Args:
-            vmid (int): VMID of the VM/Container to stop
+            vmid: VMID of the VM/Container to stop
             
         Returns:
-            bool: True if stopped successfully, False otherwise
+            Dict:[String, Any]: status, message and vmid
         """
         try:
-            if not self.is_connected():
-                logger.error("Not connected to Proxmox")
-                return False
+            proxmox = self._ensure_connected()
             
-            stop_task = self.proxmox.nodes(self.node).qemu(vmid).status.stop.post()
-            logger.success(f"✅ VM {vmid} stopped successfully")
-            return True
+            stop_task = proxmox.nodes(self.node).qemu(vmid).status.stop.post()  
+            logger.success(f"VM {vmid} stopped successfully")
+            return {
+                "status": "success",
+                "message": f"VM {vmid} stopped successfully",
+                "vmid": vmid
+            }
             
+        except ConnectionError as e:
+            logger.error(str(e))
+            raise 
         except Exception as e:
-            logger.error(f"Failed to stop VM {vmid}: {str(e)}")
-            return False
+            logger.exception(f"Failed to stop VM")
+            raise
 
+
+    # TODO: testing api proxmox buat bikin TypeDict data vm
     def _get_vm_info(self, vmid: int) -> Optional[Dict[str, Any]]:
         """
         Get detailed info of a VM/Container by VMID
         
         Args:
-            vmid (int): VMID of the VM/Container
+            vmid: VMID of the VM/Container
             
         Returns:
             Optional[Dict[str, Any]]: VM info dictionary, None if not found
         """
         try:
-            if not self.is_connected():
-                logger.error("Not connected to Proxmox")
-                return None
+            proxmox = self._ensure_connected()
             
-            vm_info = self.proxmox.nodes(self.node).qemu(vmid).config.get()
+            vm_info = proxmox.nodes(self.node).qemu(vmid).config.get()  
             return vm_info
             
-        except Exception as e:
-            logger.error(f"Failed to get info for VM {vmid}: {str(e)}")
-            return None
-    
+        except Exception:
+            raise
+
 # Global instance
 proxmox_service = ProxmoxService()
