@@ -11,6 +11,7 @@ from core.logging import logger
 from core.database import SessionLocal
 from config.settings import settings
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 import random
 
 class ChallengeService:
@@ -102,37 +103,51 @@ class ChallengeService:
     
     def submit_challenge(self, challenge_id: int, flag: str) -> Dict[str, Any]:
         # TODO: Buat challenge submission logic
-        
-        # cari challenge di db
-        stmt = select(Challenge).where(Challenge.id == challenge_id)
-        challenge = self.db.execute(stmt).scalars().first()
-        
-        if challenge is None:
-            raise ValueError("Challenge not found")
-        isCorrectFlag = (challenge.flag == flag)
-        
-        # kalau flag bener, kita update flag_submitted jadi true dan matiin vm nya
-        if isCorrectFlag:
-            challenge.flag_submitted = True
-            challenge.flag_submitted_at = datetime.now()
-            self.db.commit()
-            # cari deployment yang terkait
-            stmt = select(Deployment).where(Deployment.challenge_id == challenge_id)
-            deployment = self.db.execute(stmt).scalars().first()
-            if deployment:
-                # matiin vm via proxmoxservice
-                self.proxmox_service.stop_vm(deployment.vm_id)
-        
+        try:
+            # cari challenge di db
+            stmt = select(Challenge).where(Challenge.id == challenge_id)
+            challenge = self.db.execute(stmt).scalars().first()
             
+            if challenge is None:
+                raise ValueError("Challenge not found")
+            isCorrectFlag = (challenge.flag == flag)
             
+            # kalau flag bener, kita update flag_submitted jadi true dan matiin vm nya
+            if isCorrectFlag:
+                challenge.flag_submitted = True
+                challenge.flag_submitted_at = datetime.now()
+                self.db.commit()
+                # cari deployment yang terkait
+                stmt = select(Deployment).where(Deployment.challenge_id == challenge_id)
+                deployment = self.db.execute(stmt).scalars().first()
+                if deployment and deployment.vm_id:
+                    try:
+                        self.proxmox_service.stop_vm(deployment.vm_id)
+                    except Exception:
+                        logger.exception("Failed to stop VM")
+                else:
+                    raise ValueError("Cant find vmid in db")
+                
+        except Exception:
+            logger.exception("Failed to submit challenge")
             
-        
-        
-        # kalo sesuai, update flag_submitted jadi true
-        return {}
+        return {
+            "status": "success",
+            "message": f"Challenge submitted for challenge {challenge}",
+        }
     
     def get_all(self) -> Dict[str, Any]:
-        # TODO: ambil semua challenge dari database juga vm yang terkati dari proxmoxservice
-        return {}
-    
+        # TODO: ambil semua challenge dari database juga vm yang terkait dari proxmoxservice
+        stmt = (
+            select(Challenge)
+            .options(joinedload(Challenge.deployment)))
+        
+        challenges = self.db.execute(stmt).scalars().all()
+        
+        
+        return {
+            "success": True,
+            "message": "Successfully get all Challenges",
+            "data": challenges
+        }
     

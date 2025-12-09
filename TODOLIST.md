@@ -18,3 +18,5 @@
 - Ntar dia bakal nge listen tcp
 - Ntr pas submit, backend kirim tcp ke vm nya
 - Kalo berhasil vmnya dimatiin
+- Belajar cara buat .ova vm template
+- Belajar cara buat skrip yang bisa diajalanin via curl
