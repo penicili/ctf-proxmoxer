@@ -111,7 +111,20 @@ class ChallengeService:
             raise ValueError("Challenge not found")
         isCorrectFlag = (challenge.flag == flag)
         
+        # kalau flag bener, kita update flag_submitted jadi true dan matiin vm nya
         if isCorrectFlag:
+            challenge.flag_submitted = True
+            challenge.flag_submitted_at = datetime.now()
+            self.db.commit()
+            # cari deployment yang terkait
+            stmt = select(Deployment).where(Deployment.challenge_id == challenge_id)
+            deployment = self.db.execute(stmt).scalars().first()
+            if deployment:
+                # matiin vm via proxmoxservice
+                self.proxmox_service.stop_vm(deployment.vm_id)
+        
+            
+            
             
         
         
