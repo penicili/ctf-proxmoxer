@@ -238,7 +238,7 @@ class ProxmoxService:
             stop_task = proxmox.nodes(self.node).qemu(vmid).status.stop.post()  
             logger.success(f"VM {vmid} stopped successfully")
             return {
-                "status": "success",
+                "success": True,
                 "message": f"VM {vmid} stopped successfully",
                 "vmid": vmid
             }

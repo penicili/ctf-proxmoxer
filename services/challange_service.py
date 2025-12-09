@@ -95,7 +95,7 @@ class ChallengeService:
 
         # TODO: return apalah ini biar nggak kosong gitu dianuin
         return {
-            "status": "success",
+            "success": True,
             "message": "Challenge created successfully",
             "challenge_id": new_challenge.id,
             "vm_info": vm
@@ -132,7 +132,7 @@ class ChallengeService:
             logger.exception("Failed to submit challenge")
             
         return {
-            "status": "success",
+            "success": True,
             "message": f"Challenge submitted for challenge {challenge}",
         }
     
