@@ -1,8 +1,12 @@
-from sqlalchemy import Column, Integer, String, Text, Boolean, DateTime, Enum as SQLEnum
-from sqlalchemy.orm import relationship
+from typing import Optional, List, TYPE_CHECKING
 from enum import Enum
 from datetime import datetime
+from sqlalchemy import String, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.database import Base
+
+if TYPE_CHECKING:
+    from models.Challenge import Challenge
 
 class CategoryEnum(str, Enum):
     """Enum jenis kategori level """
@@ -31,28 +35,27 @@ class Level(Base):
     """
     __tablename__ = "levels"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
     
     # Level Info
-    name = Column(String(200), nullable=False, unique=True, index=True)
-    category = Column(SQLEnum(CategoryEnum), nullable=False, index=True)
-    difficulty = Column(SQLEnum(DifficultyEnum), nullable=False, index=True)
-    description = Column(Text, nullable=True)
-    points = Column(Integer, nullable=False, default=100)
+    name: Mapped[str] = mapped_column(String(200), unique=True, index=True)
+    category: Mapped[CategoryEnum] = mapped_column(index=True)
+    difficulty: Mapped[DifficultyEnum] = mapped_column(index=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    points: Mapped[int] = mapped_column(default=100)
     
     # Template VM/Container Config
-    template_url = Column(String(255), nullable=True)  # template url (dummy)
+    template_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # template url (dummy)
     
-        
     # Status
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationship: One-to-Many dengan Challenge
-    challenges = relationship("Challenge", back_populates="level", cascade="all, delete-orphan")
+    challenge: Mapped[List["Challenge"]] = relationship(back_populates="level", cascade="all, delete-orphan")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<Level(id={self.id}, name='{self.name}', category={self.category}, difficulty={self.difficulty})>"

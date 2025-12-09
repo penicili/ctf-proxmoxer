@@ -1,11 +1,16 @@
 """
 Challenge yang telah dibuat serta relasi dengan level dan deployment
 """
-from sqlalchemy import Column, Integer, String, TIMESTAMP, Boolean, DateTime, ForeignKey, func
-from sqlalchemy.orm import relationship
+from typing import Optional, TYPE_CHECKING
 from datetime import datetime
+from sqlalchemy import String, TIMESTAMP, ForeignKey, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.database import Base
+
+if TYPE_CHECKING:
+    from models.Level import Level
+    from models.Deployment import Deployment
 
 class Challenge(Base):
     """
@@ -15,29 +20,33 @@ class Challenge(Base):
     """
     __tablename__ = "challenges"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
     
     # Foreign Key to Level (Many-to-One)
-    level_id = Column(Integer, ForeignKey("levels.id", ondelete="CASCADE"), nullable=False, index=True)
+    level_id: Mapped[int] = mapped_column(ForeignKey("levels.id", ondelete="CASCADE"), index=True)
     
     # Team Info
-    team = Column(String(100), nullable=False, index=True)
+    team: Mapped[str] = mapped_column(String(100), index=True)
     
     # Flag Management
-    flag = Column(String(255), nullable=True, unique=True, index=True) 
-    flag_submitted = Column(Boolean, default=False, nullable=False)
-    flag_submitted_at = Column(TIMESTAMP, nullable=True)
+    flag: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
+    flag_submitted: Mapped[bool] = mapped_column(default=False)
+    flag_submitted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP, nullable=True)
     
     # Status
-    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, index=True)
     
     # Timestamps
-    created_at = Column(TIMESTAMP, server_default=func.now(), nullable=False)
-    updated_at = Column(TIMESTAMP, server_default=func.now(), server_onupdate=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), server_onupdate=func.now())
     
     # Relationships
-    level = relationship("Level", back_populates="challenges")  # Many-to-One
-    deployment = relationship("Deployment", back_populates="challenge", uselist=False, cascade="all, delete-orphan")  # One-to-One
+    level_id: Mapped[int] = mapped_column(ForeignKey("levels.id", ondelete="CASCADE"), index=True)
+    level: Mapped["Level"] = relationship(back_populates="challenges")  # Many-to-One
     
-    def __repr__(self):
+    deployment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("deployments.id", ondelete="SET NULL"), unique=True, index=True, nullable=True)
+    deployment: Mapped[Optional["Deployment"]] = relationship(back_populates="challenge", uselist=False, cascade="all, delete-orphan")  # One-to-One
+    
+    
+    def __repr__(self) -> str:
         return f"<Challenge(id={self.id}, level_id={self.level_id}, team='{self.team}', flag_submitted={self.flag_submitted})>"

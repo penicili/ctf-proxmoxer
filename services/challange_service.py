@@ -10,6 +10,7 @@ from services.proxmox_service import ProxmoxService
 from core.logging import logger
 from core.database import SessionLocal
 from config.settings import settings
+from sqlalchemy import select
 import random
 
 class ChallengeService:
@@ -55,6 +56,10 @@ class ChallengeService:
 
         # Create Deployment record di db
         
+        # TODO: ntar flag nggak bakal digenerate oleh backend, tapi sama vm nya sendiri
+        # TODO: buat api yang dipanggil vm buat ngereport ketika flag nya udah disubmit
+        # TODO: buat service buat submit flag ke vm/container via TCP atau semacemnya
+        
         new_deployment = Deployment(
             level_id=level_id,
             team=team_name,
@@ -89,6 +94,7 @@ class ChallengeService:
 
         # TODO: return apalah ini biar nggak kosong gitu dianuin
         return {
+            "status": "success",
             "message": "Challenge created successfully",
             "challenge_id": new_challenge.id,
             "vm_info": vm
@@ -96,6 +102,20 @@ class ChallengeService:
     
     def submit_challenge(self, challenge_id: int, flag: str) -> Dict[str, Any]:
         # TODO: Buat challenge submission logic
+        
+        # cari challenge di db
+        stmt = select(Challenge).where(Challenge.id == challenge_id)
+        challenge = self.db.execute(stmt).scalars().first()
+        
+        if challenge is None:
+            raise ValueError("Challenge not found")
+        isCorrectFlag = (challenge.flag == flag)
+        
+        if isCorrectFlag:
+            
+        
+        
+        # kalo sesuai, update flag_submitted jadi true
         return {}
     
     def get_all(self) -> Dict[str, Any]:

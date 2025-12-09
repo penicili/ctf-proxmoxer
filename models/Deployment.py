@@ -1,8 +1,12 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Enum as SQLEnum, ForeignKey
-from sqlalchemy.orm import relationship
-from datetime import datetime
+from typing import Optional, Dict, Any, TYPE_CHECKING
 from enum import Enum
+from datetime import datetime
+from sqlalchemy import String, Text, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from core.database import Base
+
+if TYPE_CHECKING:
+    from models.Challenge import Challenge
 
 
 class DeploymentStatus(str, Enum):
@@ -23,28 +27,28 @@ class Deployment(Base):
     """
     __tablename__ = "deployments"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
     
     # Foreign Key to Challenge (One-to-One)
-    challenge_id = Column(Integer, ForeignKey("challenges.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id", ondelete="CASCADE"), unique=True, index=True)
     
     # VM Details
-    vm_id = Column(Integer, nullable=True, unique=True, index=True)  # Proxmox VMID
-    vm_name = Column(String(100), nullable=True, unique=True)  # Unique VM name
-    vm_ip = Column(String(45), nullable=True)  # IPv4 atau IPv6
+    vm_id: Mapped[Optional[int]] = mapped_column(unique=True, index=True, nullable=True)  # Proxmox VMID
+    vm_name: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)  # Unique VM name
+    vm_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)  # IPv4 atau IPv6
         
     # Status & Lifecycle
-    status = Column(SQLEnum(DeploymentStatus), default=DeploymentStatus.PENDING, nullable=False, index=True)
-    error_message = Column(Text, nullable=True)  # Error details jika status=ERROR
+    status: Mapped[DeploymentStatus] = mapped_column(default=DeploymentStatus.PENDING, index=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Error details jika status=ERROR
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    started_at = Column(DateTime, nullable=True)  # Kapan VM mulai running
-    stopped_at = Column(DateTime, nullable=True)  # Kapan VM di-stop
-    terminated_at = Column(DateTime, nullable=True)  # Kapan VM dihapus
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # Kapan VM mulai running
+    stopped_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # Kapan VM di-stop
+    terminated_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)  # Kapan VM dihapus
     
     # Relationship: One-to-One dengan Challenge
-    challenge = relationship("Challenge", back_populates="deployment")
+    challenge: Mapped["Challenge"] = relationship(back_populates="deployment")
     
     
     def __repr__(self):
