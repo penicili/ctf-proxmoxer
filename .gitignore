@@ -1,4 +1,6 @@
 .venv/
+.venv-wsl/
+.pytest_cache/
 .env
 __pycache__/
 *.log

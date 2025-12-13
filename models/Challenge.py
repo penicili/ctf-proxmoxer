@@ -41,11 +41,11 @@ class Challenge(Base):
     updated_at: Mapped[datetime] = mapped_column(TIMESTAMP, server_default=func.now(), server_onupdate=func.now())
     
     # Relationships
-    level_id: Mapped[int] = mapped_column(ForeignKey("levels.id", ondelete="CASCADE"), index=True)
     level: Mapped["Level"] = relationship(back_populates="challenges")  # Many-to-One
     
-    deployment_id: Mapped[Optional[int]] = mapped_column(ForeignKey("deployments.id", ondelete="SET NULL"), unique=True, index=True, nullable=True)
-    deployment: Mapped[Optional["Deployment"]] = relationship(back_populates="challenge", uselist=False, cascade="all, delete-orphan")  # One-to-One
+    # One-to-One relationship with Deployment
+    # The ForeignKey is on the Deployment side (challenge_id)
+    deployment: Mapped[Optional["Deployment"]] = relationship(back_populates="challenge", uselist=False, cascade="all, delete-orphan")
     
     
     def __repr__(self) -> str:

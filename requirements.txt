@@ -21,6 +21,8 @@ loguru
 
 # testing
 httpie
+pytest
 
-# ansile
+# ansible
 ansible-runner
+ansible-core

@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session, joinedload
 
 from models import Challenge, Deployment, Level
 from services.proxmox_service import ProxmoxService
+from services.ansible_service import AnsibleService # NEW
 from config.settings import Settings
 from core.logging import logger
 from core.exceptions import VMCreationError, ResourceNotFoundError
 from schemas.types.Vm_types import VMResult
 from schemas.types.Challenge_types import ChallengeResult
+from schemas.types.Ansible_types import AnsiblePlaybookRequest, AnsiblePlaybookResult # NEW
 
 class ChallengeService:
     """
@@ -19,9 +21,10 @@ class ChallengeService:
     Business logic utama aplikasi.
     """
     
-    def __init__(self, db: Session, proxmox_service: ProxmoxService, settings: Settings):
+    def __init__(self, db: Session, proxmox_service: ProxmoxService, ansible_service: AnsibleService, settings: Settings):
         self.db = db
         self.proxmox_service = proxmox_service
+        self.ansible_service = ansible_service # NEW
         self.settings = settings
     
     def create_challenge(self, level_id: int, team_name: str) -> ChallengeResult:
@@ -29,6 +32,7 @@ class ChallengeService:
         Create challenge implementation.
         """
         vm: Optional[VMResult] = None
+        ansible_result: Optional[AnsiblePlaybookResult] = None # NEW
         try:
             # Create VM via ProxmoxService
             vm = self.proxmox_service.create_vm(
@@ -38,15 +42,11 @@ class ChallengeService:
                 config={}
             )
 
-            # Create Deployment record
-            new_deployment = Deployment(
-                level_id=level_id,
-                team=team_name,
-                vm_id=vm.vmid,
-                is_active=True
-            )
-            self.db.add(new_deployment)
-            self.db.flush() # Flush to get ID if needed, but not commit yet
+            # --- Ansible Configuration (NEW) ---
+            # TODO: Implement a robust way to get the VM's IP address.
+            # For now, assuming vm.info.name is resolvable or using a placeholder.
+            # Ideally, wait for network (e.g., via Cloud-Init or Proxmox API for IP)
+            vm_ssh_target = vm.info.name if vm.info and vm.info.name else f"vmid-{vm.vmid}"
             
             # Generate Flag
             random_flag = ''.join(random.choices(
@@ -54,7 +54,27 @@ class ChallengeService:
                 k=self.settings.FLAG_LENGTH
             ))
             flagstring = f"{self.settings.FLAG_PREFIX}{{{random_flag}}}"
+
+            ansible_request = AnsiblePlaybookRequest(
+                host=vm_ssh_target, # Host for Ansible (placeholder)
+                playbook_name="setup_challenge.yml",
+                user=self.settings.SSH_USERNAME, # Default SSH user from settings
+                private_key=None, # TODO: Implement SSH key management if needed
+                extra_vars={"challenge_flag": flagstring}
+            )
             
+            logger.info(f"Running Ansible playbook '{ansible_request.playbook_name}' on '{vm_ssh_target}'")
+            ansible_result = self.ansible_service.run_playbook(ansible_request)
+
+            if not ansible_result.success:
+                logger.error(f"Ansible playbook failed for VM {vm.vmid}. Output: {ansible_result.stdout}")
+                # Raise an error, or handle gracefully (e.g., mark challenge as failed config)
+                raise VMCreationError(f"Ansible configuration failed for VM {vm.vmid}")
+            
+            logger.info(f"Ansible configuration complete for VM {vm.vmid}.")
+            # --- End Ansible Configuration ---
+
+            # 1. Create Challenge FIRST (Parent)
             new_challenge = Challenge(
                 level_id=level_id,
                 team=team_name,
@@ -62,10 +82,20 @@ class ChallengeService:
                 flag_submitted=False,
                 is_active=True
             )
-            
             self.db.add(new_challenge)
+            self.db.flush() # Get ID for new_challenge
+            
+            # 2. Create Deployment (Child) linked to Challenge
+            new_deployment = Deployment(
+                challenge_id=new_challenge.id,
+                vm_id=vm.vmid,
+                vm_name=vm.info.name if vm.info and vm.info.name else f"vm-{vm.vmid}",
+                # status defaults to PENDING
+            )
+            
+            self.db.add(new_deployment)
             self.db.commit()
-            self.db.refresh(new_challenge)
+            self.db.refresh(new_challenge) # Refresh to load relationship if needed
             
             logger.info(f"Challenge created: {new_challenge.id}, Flag: {new_challenge.flag}")
 
@@ -81,10 +111,10 @@ class ChallengeService:
             self.db.rollback()
             logger.error(f"Error during challenge creation: {e}")
             
-            # Cleanup: If VM was created but DB failed, we must clean up the VM
+            # Cleanup: If VM was created but DB failed or Ansible failed, we must clean up the VM
             if vm:
                 try:
-                    logger.warning(f"Rolling back VM {vm.vmid} due to DB error...")
+                    logger.warning(f"Rolling back VM {vm.vmid} due to error: {e}")
                     self.proxmox_service.stop_vm(vm.vmid)
                     # TODO: Implement destroy_vm in ProxmoxService for full cleanup
                 except Exception as cleanup_error:

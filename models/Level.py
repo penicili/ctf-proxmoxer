@@ -55,7 +55,7 @@ class Level(Base):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationship: One-to-Many dengan Challenge
-    challenge: Mapped[List["Challenge"]] = relationship(back_populates="level", cascade="all, delete-orphan")
+    challenges: Mapped[List["Challenge"]] = relationship(back_populates="level", cascade="all, delete-orphan")
     
     def __repr__(self) -> str:
         return f"<Level(id={self.id}, name='{self.name}', category={self.category}, difficulty={self.difficulty})>"
