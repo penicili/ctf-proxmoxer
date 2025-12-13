@@ -1,0 +1,4 @@
+class AnsibleService:
+    pass
+
+AnsibleService()

@@ -1,8 +1,11 @@
-from typing import TypedDict, Optional, Dict, Any
+from pydantic import BaseModel
+from typing import Optional
+from .Vm_types import VMResult
 
-class ChallengeResultType(TypedDict):
-    status: str
-    challenge_id: Optional[int]
-    level_id: Optional[int]
-    flag: Optional[str]
-    vmid: Optional[int]
+class ChallengeResult(BaseModel):
+    """Hasil operasi pembuatan Challenge"""
+    success: bool
+    message: str
+    challenge_id: int
+    vm_info: Optional[VMResult] = None # Bisa None jika challenge gagal dibuat (meski biasanya raise Error)
+    flag: Optional[str] = None

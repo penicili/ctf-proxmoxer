@@ -21,3 +21,6 @@ loguru
 
 # testing
 httpie
+
+# ansile
+ansible-runner

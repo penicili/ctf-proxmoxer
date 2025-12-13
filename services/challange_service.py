@@ -1,153 +1,124 @@
-"""
-Docstring for services.challange_service
-
-Manajemen challange yang telah dibuat, status challange serta vm yang terkait
-"""
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional, Sequence
 from datetime import datetime
+import random
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, joinedload
+
 from models import Challenge, Deployment, Level
 from services.proxmox_service import ProxmoxService
+from config.settings import Settings
 from core.logging import logger
-from core.database import SessionLocal
-from config.settings import settings
-from sqlalchemy import select
-from sqlalchemy.orm import joinedload
-import random
+from core.exceptions import VMCreationError, ResourceNotFoundError
+from schemas.types.Vm_types import VMResult
+from schemas.types.Challenge_types import ChallengeResult
 
 class ChallengeService:
     """
-    Service untuk manajemen Challenge dan memanggil ProxmoxService sesuai kebutuhan
-    Business logic utama aplikasi
+    Service untuk manajemen Challenge dan memanggil ProxmoxService sesuai kebutuhan.
+    Business logic utama aplikasi.
     """
     
-    def __init__(self):
-        # panggil database dan proxmoxservice
-        self.proxmox_service = ProxmoxService()
-        self.db = SessionLocal()
+    def __init__(self, db: Session, proxmox_service: ProxmoxService, settings: Settings):
+        self.db = db
+        self.proxmox_service = proxmox_service
+        self.settings = settings
     
-    def __del__ (self):
+    def create_challenge(self, level_id: int, team_name: str) -> ChallengeResult:
         """
-        Cleanup close db connection
+        Create challenge implementation.
         """
-        self.db.close()
-    
-    def create_challenge(self, level_id: int, team_name: str) -> Dict[str, Any]:
-        """Create challenge
+        vm: Optional[VMResult] = None
+        try:
+            # Create VM via ProxmoxService
+            vm = self.proxmox_service.create_vm(
+                level_id=level_id,
+                team=team_name,
+                time_limit=60, # TODO: Move to settings or level config
+                config={}
+            )
 
-        Args:
-            level_id (int): template level challenge CTF
-            team_name (str): nama tim
+            # Create Deployment record
+            new_deployment = Deployment(
+                level_id=level_id,
+                team=team_name,
+                vm_id=vm.vmid,
+                is_active=True
+            )
+            self.db.add(new_deployment)
+            self.db.flush() # Flush to get ID if needed, but not commit yet
+            
+            # Generate Flag
+            random_flag = ''.join(random.choices(
+                self.settings.FLAG_CHARSET, 
+                k=self.settings.FLAG_LENGTH
+            ))
+            flagstring = f"{self.settings.FLAG_PREFIX}{{{random_flag}}}"
+            
+            new_challenge = Challenge(
+                level_id=level_id,
+                team=team_name,
+                flag=flagstring,
+                flag_submitted=False,
+                is_active=True
+            )
+            
+            self.db.add(new_challenge)
+            self.db.commit()
+            self.db.refresh(new_challenge)
+            
+            logger.info(f"Challenge created: {new_challenge.id}, Flag: {new_challenge.flag}")
 
-        Returns:
-            Dict[str, Any]: info challenge dan vm terkait
-        """
-        
-        # Create VM via ProxmoxService
-        vm = self.proxmox_service.create_vm(
-            level_id=level_id,
-            team=team_name,
-            time_limit=60,
-            config={}
-        )
-        
-        if not vm:
-            logger.error(f"Failed to create VM for team '{team_name}' and level '{level_id}'")
-            raise Exception("VM creation failed")
-        
-
-        # Create Deployment record di db
-        
-        # TODO: ntar flag nggak bakal digenerate oleh backend, tapi sama vm nya sendiri
-        # TODO: buat api yang dipanggil vm buat ngereport ketika flag nya udah disubmit
-        # TODO: buat service buat submit flag ke vm/container via TCP atau semacemnya
-        
-        new_deployment = Deployment(
-            level_id=level_id,
-            team=team_name,
-            vm_id=vm['vmid'],
-            is_active=True
-        )
-        
-        self.db.add(new_deployment)
-        self.db.commit()
-        self.db.refresh(new_deployment)
-        
-        # Randomize flag
-        flag_length = settings.FLAG_LENGTH
-        flag_charset = settings.FLAG_CHARSET
-        flag_prefix = settings.FLAG_PREFIX
-        random_flag = ''.join(random.choices(flag_charset, k=flag_length))
-        flagstring = f"{flag_prefix}{{{random_flag}}}"
-        
-        new_challenge = Challenge(
-            level_id=level_id,
-            team=team_name,
-            flag=flagstring,
-            flag_submitted=False,
-            is_active=True
-        )
-        
-        self.db.add(new_challenge)
-        self.db.commit()
-        self.db.refresh(new_challenge)
-        logger.info(f"Challenge created for team '{team_name}' with ID: {new_challenge.id} and flag: {new_challenge.flag}")
-
-
-        # TODO: return apalah ini biar nggak kosong gitu dianuin
-        return {
-            "success": True,
-            "message": "Challenge created successfully",
-            "challenge_id": new_challenge.id,
-            "vm_info": vm
-        }
+            return ChallengeResult(
+                success=True,
+                message="Challenge created successfully",
+                challenge_id=new_challenge.id,
+                vm_info=vm,
+                flag=flagstring # Hanya untuk debug/admin, jangan expose ke user biasa nanti
+            )
+            
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error during challenge creation: {e}")
+            
+            # Cleanup: If VM was created but DB failed, we must clean up the VM
+            if vm:
+                try:
+                    logger.warning(f"Rolling back VM {vm.vmid} due to DB error...")
+                    self.proxmox_service.stop_vm(vm.vmid)
+                    # TODO: Implement destroy_vm in ProxmoxService for full cleanup
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to cleanup VM {vm.vmid}: {cleanup_error}")
+            
+            # Re-raise the original error
+            raise e
     
     def submit_challenge(self, challenge_id: int, flag: str) -> Dict[str, Any]:
-        # TODO: Buat challenge submission logic
-        try:
-            # cari challenge di db
-            stmt = select(Challenge).where(Challenge.id == challenge_id)
-            challenge = self.db.execute(stmt).scalars().first()
+        stmt = select(Challenge).where(Challenge.id == challenge_id)
+        challenge = self.db.execute(stmt).scalars().first()
+        
+        if not challenge:
+            raise ResourceNotFoundError(f"Challenge {challenge_id} not found")
+        
+        if challenge.flag == flag:
+            challenge.flag_submitted = True
+            challenge.flag_submitted_at = datetime.now()
             
-            if challenge is None:
-                raise ValueError("Challenge not found")
-            isCorrectFlag = (challenge.flag == flag)
+            # Stop VM logic
+            stmt_dep = select(Deployment).where(Deployment.challenge_id == challenge_id)
+            deployment = self.db.execute(stmt_dep).scalars().first()
             
-            # kalau flag bener, kita update flag_submitted jadi true dan matiin vm nya
-            if isCorrectFlag:
-                challenge.flag_submitted = True
-                challenge.flag_submitted_at = datetime.now()
-                self.db.commit()
-                # cari deployment yang terkait
-                stmt = select(Deployment).where(Deployment.challenge_id == challenge_id)
-                deployment = self.db.execute(stmt).scalars().first()
-                if deployment and deployment.vm_id:
-                    try:
-                        self.proxmox_service.stop_vm(deployment.vm_id)
-                    except Exception:
-                        logger.exception("Failed to stop VM")
-                else:
-                    raise ValueError("Cant find vmid in db")
-                
-        except Exception:
-            logger.exception("Failed to submit challenge")
+            if deployment and deployment.vm_id:
+                try:
+                    self.proxmox_service.stop_vm(deployment.vm_id)
+                except Exception as e:
+                    logger.error(f"Failed to stop VM after submission: {e}")
             
-        return {
-            "success": True,
-            "message": f"Challenge submitted for challenge {challenge}",
-        }
+            self.db.commit()
+            return {"success": True, "message": "Flag correct!"}
+        else:
+            return {"success": False, "message": "Flag incorrect"}
     
-    def get_all(self) -> Dict[str, Any]:
-        # TODO: ambil semua challenge dari database juga vm yang terkait dari proxmoxservice
-        stmt = (
-            select(Challenge)
-            .options(joinedload(Challenge.deployment)))
-        
-        challenges = self.db.execute(stmt).scalars().all()
-        
-        
-        return {
-            "success": True,
-            "message": "Successfully get all Challenges",
-            "data": challenges
-        }
-    
+    def get_all(self) -> Sequence[Challenge]:
+        stmt = select(Challenge).options(joinedload(Challenge.deployment))
+        return self.db.execute(stmt).scalars().all()
