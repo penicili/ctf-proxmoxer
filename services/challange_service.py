@@ -11,8 +11,8 @@ from services.ansible_service import AnsibleService # NEW
 from config.settings import Settings
 from core.logging import logger
 from core.exceptions import VMCreationError, ResourceNotFoundError
-from schemas.types.Vm_types import VMResult
-from schemas.types.Challenge_types import ChallengeResult
+from schemas.types.vm_types import VMResult
+from schemas.types.challenge_types import ChallengeResult
 from schemas.types.Ansible_types import AnsiblePlaybookRequest, AnsiblePlaybookResult # NEW
 
 class ChallengeService:

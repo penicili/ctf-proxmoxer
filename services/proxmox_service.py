@@ -7,7 +7,7 @@ from proxmoxer import ProxmoxAPI
 from typing import Optional, List, Dict, Any
 from config.settings import Settings
 from core.logging import logger
-from schemas.types.Vm_types import VMResult, VMInfo
+from schemas.types.vm_types import VMResult, VMInfo
 from core.exceptions import ProxmoxConnectionError, ProxmoxNodeError, VMCreationError, ResourceNotFoundError
 
 class ProxmoxService:
