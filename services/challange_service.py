@@ -60,7 +60,10 @@ class ChallengeService:
                 playbook_name="setup_challenge.yml",
                 user=self.settings.SSH_USERNAME, # Default SSH user from settings
                 private_key=None, # TODO: Implement SSH key management if needed
-                extra_vars={"challenge_flag": flagstring}
+                extra_vars={"challenge_flag": flagstring,
+                            "challenge_flag_path": "/var/www/html/flag.txt",
+                            "challenge_repo_url": "some-repo-url",  # TODO: Define challenge repo URL
+                           }
             )
             
             logger.info(f"Running Ansible playbook '{ansible_request.playbook_name}' on '{vm_ssh_target}'")

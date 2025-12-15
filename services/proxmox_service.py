@@ -91,50 +91,67 @@ class ProxmoxService:
         config: Dict[str, Any]
     ) -> VMResult:
         """
-        Membuat VM baru
+        Membuat VM baru dengan cara clone dari template yang sudah ada
         """
         
         team = team.strip()
         time_limit = max(1, time_limit)
         
-        logger.info(f"Creating VM for team '{team}', level '{level_id}'...")
+        logger.info(f"Cloning VM for team '{team}', level '{level_id}'...")
         
         try:
             proxmox = self._ensure_connected()
             vmid = self._get_next_vmid()
             vm_name = f"{team}-{level_id}-{vmid}"
-            
-            # Default config from settings if not provided
+
+            # Template dan storage default dari settings (bisa di override via config)
+            # TODO: set vmid template
+            template_vmid = int(config.get('template_vmid', getattr(self.settings, 'TEMPLATE_VMID', 0)))
+            if not template_vmid:
+                raise VMCreationError("Template VMID tidak ditemukan. Set TEMPLATE_VMID di Settings atau kirim via config.")
+
+            storage = config.get('storage', getattr(self.settings, 'DEFAULT_STORAGE', 'local-lvm'))
+            target_node = config.get('target_node', self.node)
+
+            # Opsi clone
+            clone_opts = {
+                'newid': vmid,
+                'name': vm_name,
+                'target': target_node,
+                'storage': storage,
+                # full=1 untuk full clone (copy disk), 0 untuk linked clone (butuh template template di storage yang sama)
+                'full': int(config.get('full', 1)),
+            }
+
+            # Lakukan clone dari template
+            logger.debug(f"Cloning template VMID {template_vmid} to VMID {vmid} on node {target_node} storage {storage}...")
+            proxmox.nodes(self.node).qemu(template_vmid).clone.post(**clone_opts)
+
+            # Optional: apply overrides setelah clone (memory, cores, net)
             memory = config.get('memory', self.settings.DEFAULT_VM_MEMORY)
             cores = config.get('cores', self.settings.DEFAULT_VM_CORES)
-            
-            vm_config = {
-                'vmid': vmid,
-                'name': vm_name,
-                'memory': memory,
-                'cores': cores,
-                'net0': 'virtio,bridge=vmbr0',
-                # TODO: Refine ISO/Template logic. Currently hardcoded fallback.
-                'ide2': f"{config.get('iso', 'local:iso/ubuntu-24.04.3-live-server-amd64.iso')},media=cdrom",
-                'scsi0': f"local-lvm:{config.get('disk_size', 10)}",
-                'scsihw': 'virtio-scsi-pci',
-                'boot': 'cdn'
-            }
-            
-            proxmox.nodes(self.node).qemu.post(**vm_config)
-            
+            net0 = config.get('net0', 'virtio,bridge=vmbr0')
+
+            try:
+                proxmox.nodes(target_node).qemu(vmid).config.post(
+                    memory=memory,
+                    cores=cores,
+                    net0=net0
+                )
+            except Exception as e:
+                logger.warning(f"Gagal apply config ke VM {vmid}: {e}")
+
             # Start VM
             try:
-                proxmox.nodes(self.node).qemu(vmid).status.start.post()
+                proxmox.nodes(target_node).qemu(vmid).status.start.post()
             except Exception as e:
-                # Cleanup if start fails
                 logger.error(f"Failed to start VM {vmid}, rolling back...")
-                proxmox.nodes(self.node).qemu(vmid).delete()
-                raise VMCreationError(f"Created VM but failed to start: {e}")
+                proxmox.nodes(target_node).qemu(vmid).delete()
+                raise VMCreationError(f"Cloned VM but failed to start: {e}")
 
             # Get Info and Return Pydantic Model
             raw_info = self.get_vm_info(vmid)
-            vm_info = VMInfo(**raw_info) # Validate & Parse info
+            vm_info = VMInfo(**raw_info)
 
             return VMResult(
                 status="success",
@@ -143,7 +160,7 @@ class ProxmoxService:
             )
             
         except Exception as e:
-            logger.exception("Failed to create VM")
+            logger.exception("Failed to clone VM")
             raise VMCreationError(str(e))
 
     def _get_next_vmid(self) -> int:
