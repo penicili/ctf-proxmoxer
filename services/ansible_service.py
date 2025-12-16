@@ -1,26 +1,25 @@
-import os
+from pathlib import Path
 import ansible_runner
 from typing import Dict, Any
-from schemas.types.Ansible_types import AnsiblePlaybookRequest, AnsiblePlaybookResult
+from schemas.types.ansible_types import AnsiblePlaybookParams, AnsiblePlaybookReturn
 from config.settings import Settings
 from core.logging import logger
 
 class AnsibleService:
     def __init__(self, settings: Settings):
         self.settings = settings
-        # Folder project root (asumsi script ini jalan dari root)
-        self.project_dir = os.getcwd()
-        self.ansible_dir = os.path.join(self.project_dir, "ansible")
-        self.playbook_dir = os.path.join(self.ansible_dir, "playbooks")
+        self.project_dir = Path.cwd()
+        self.ansible_dir = self.project_dir / "ansible"
+        self.playbook_dir = self.ansible_dir / "playbooks"
 
-    def run_playbook(self, request: AnsiblePlaybookRequest) -> AnsiblePlaybookResult:
+    def run_playbook(self, request: AnsiblePlaybookParams) -> AnsiblePlaybookReturn:
         logger.info(f"Preparing to run playbook '{request.playbook_name}' on {request.host}")
         
         # Validasi path playbook
-        playbook_path = os.path.join(self.playbook_dir, request.playbook_name)
-        if not os.path.exists(playbook_path):
+        playbook_path = self.playbook_dir / request.playbook_name
+        if not playbook_path.exists():
             logger.error(f"Playbook not found: {playbook_path}")
-            return AnsiblePlaybookResult(
+            return AnsiblePlaybookReturn(
                 success=False,
                 status="error",
                 rc=1,
@@ -49,7 +48,7 @@ class AnsibleService:
         # Run Ansible Runner
         try:
             r = ansible_runner.run(
-                private_data_dir=self.ansible_dir,
+                private_data_dir=str(self.ansible_dir),
                 playbook=request.playbook_name, # Runner mencari di project/playbooks atau relative path
                 inventory=inventory_content,
                 ssh_key=ssh_key,
@@ -76,7 +75,7 @@ class AnsibleService:
             else:
                 logger.error(f"Ansible playbook failed. Status: {status}, RC: {rc_value}")
 
-            return AnsiblePlaybookResult(
+            return AnsiblePlaybookReturn(
                 success=success,
                 status=status,
                 rc=rc_value,
@@ -87,7 +86,7 @@ class AnsibleService:
 
         except Exception as e:
             logger.exception("Exception while running Ansible")
-            return AnsiblePlaybookResult(
+            return AnsiblePlaybookReturn(
                 success=False,
                 status="exception",
                 rc=1,

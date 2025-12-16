@@ -1,9 +1,9 @@
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional, List
 
-class AnsiblePlaybookRequest(BaseModel):
+class AnsiblePlaybookParams(BaseModel):
     """
-    Request model untuk menjalankan Ansible Playbook
+    Parameters model for running an Ansible Playbook
     """
     host: str = Field(..., description="IP Address atau Hostname target")
     playbook_name: str = Field(..., description="Nama file playbook (contoh: setup_web.yml)")
@@ -12,9 +12,9 @@ class AnsiblePlaybookRequest(BaseModel):
     private_key: Optional[str] = Field(None, description="Isi Private Key (string) jika custom") 
     extra_vars: Dict[str, Any] = Field(default_factory=dict, description="Variabel tambahan untuk playbook")
 
-class AnsiblePlaybookResult(BaseModel):
+class AnsiblePlaybookReturn(BaseModel):
     """
-    Hasil eksekusi Ansible Playbook
+    Result of Ansible Playbook execution
     """
     success: bool
     status: str = Field(..., description="Status runner (successful, failed, error)")

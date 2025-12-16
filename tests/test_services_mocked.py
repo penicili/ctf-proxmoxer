@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch, ANY
 from typing import Dict, Any
 
 from schemas.types.Vm_types import VMResult, VMInfo
-from schemas.types.Ansible_types import AnsiblePlaybookRequest, AnsiblePlaybookResult
+from schemas.types.ansible_types import AnsiblePlaybookParams, AnsiblePlaybookReturn
 from schemas.types.Challenge_types import ChallengeResult
 from services.proxmox_service import ProxmoxService
 from services.ansible_service import AnsibleService
@@ -103,7 +103,7 @@ def test_ansible_run_playbook_success(mock_settings, mock_ansible_runner_run):
     mock_ansible_runner_run.return_value = mock_runner_obj
     
     # Request
-    req = AnsiblePlaybookRequest(host="192.168.1.50", playbook_name="test.yml")
+    req = AnsiblePlaybookParams(host="192.168.1.50", playbook_name="test.yml")
     
     # Execute
     result = service.run_playbook(req)
@@ -148,7 +148,7 @@ def test_create_challenge_workflow(mock_db_session, mock_settings):
     mock_proxmox_service.create_vm.return_value = vm_result
     
     # 2. Mock Ansible Success
-    ansible_res = AnsiblePlaybookResult(success=True, status="successful", rc=0, stats={})
+    ansible_res = AnsiblePlaybookReturn(success=True, status="successful", rc=0, stats={})
     mock_ansible_service.run_playbook.return_value = ansible_res
     
     # Execute

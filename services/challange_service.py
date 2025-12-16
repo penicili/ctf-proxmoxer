@@ -13,7 +13,7 @@ from core.logging import logger
 from core.exceptions import VMCreationError, ResourceNotFoundError
 from schemas.types.vm_types import VMResult
 from schemas.types.challenge_types import ChallengeResult
-from schemas.types.Ansible_types import AnsiblePlaybookRequest, AnsiblePlaybookResult # NEW
+from schemas.types.ansible_types import AnsiblePlaybookParams, AnsiblePlaybookReturn # NEW
 
 class ChallengeService:
     """
@@ -32,7 +32,7 @@ class ChallengeService:
         Create challenge implementation.
         """
         vm: Optional[VMResult] = None
-        ansible_result: Optional[AnsiblePlaybookResult] = None # NEW
+        ansible_result: Optional[AnsiblePlaybookReturn] = None # NEW
         try:
             # Create VM via ProxmoxService
             vm = self.proxmox_service.create_vm(
@@ -55,7 +55,7 @@ class ChallengeService:
             ))
             flagstring = f"{self.settings.FLAG_PREFIX}{{{random_flag}}}"
 
-            ansible_request = AnsiblePlaybookRequest(
+            ansible_request = AnsiblePlaybookParams(
                 host=vm_ssh_target, # Host for Ansible (placeholder)
                 playbook_name="setup_challenge.yml",
                 user=self.settings.SSH_USERNAME, # Default SSH user from settings
