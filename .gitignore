@@ -5,5 +5,4 @@
 __pycache__/
 *.log
 *pyc
-responses/
-.vscode/
+.vscode
