@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from core.logging import logger
-from schemas.types.Challenge_types import ChallengeResult
+from schemas.types.challenge_types import ChallengeResult
 from api.dependencies import ChallengeServiceDep
 
 router = APIRouter(
