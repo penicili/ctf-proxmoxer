@@ -1,0 +1,1 @@
+from challenges_requests import CreateChallengeRequest, SubmitFlagRequest

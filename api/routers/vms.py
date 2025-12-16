@@ -1,13 +1,14 @@
 from fastapi import APIRouter, HTTPException
 from api.dependencies import ProxmoxServiceDep
 from core.logging import logger
+from schemas.responses import VMListResponse
 
 router = APIRouter(
     prefix="/vms",
     tags=["Virtual Machines"]
 )
 
-@router.get("")
+@router.get("", response_model=VMListResponse)
 def list_vms(service: ProxmoxServiceDep):
     """List all VMs/Containers"""
     try:

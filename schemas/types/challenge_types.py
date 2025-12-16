@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import Optional
-from .Vm_types import VMResult
+from .vm_types import VMResult
 
 class ChallengeResult(BaseModel):
     """Hasil operasi pembuatan Challenge"""
