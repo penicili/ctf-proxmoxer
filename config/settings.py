@@ -17,7 +17,23 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
         
     # Database
-    DATABASE_URL: str = "sqlite:///./ctf.db"
+    DB_PLATFORM: str = "mysql"
+    DB_USER: str = "user"
+    DB_PASSWORD: str = "password"
+    DB_HOST: str = "localhost"
+    DB_PORT: int = 3006
+    DB_DATABASE: str = "ctf_db"
+    
+    @property
+    def DB_URL(self) -> str:
+        if self.DB_PLATFORM == "sqlite":
+            return f"sqlite:///{self.DB_DATABASE}.db"
+        elif self.DB_PLATFORM == "mysql":
+            return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
+        elif self.DB_PLATFORM == "postgresql":
+            return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
+        else:
+            raise ValueError(f"Unsupported DB_PLATFORM: {self.DB_PLATFORM}")
     
     # Proxmox
     PROXMOX_HOST: str = Field(default="192.168.1.100")
@@ -45,10 +61,10 @@ class Settings(BaseSettings):
     FLAG_CHARSET: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     
     # Network
-    NETWORK_BASE: str = "192.168.100"
-    NETWORK_MASK: int = 24
     STARTING_VMID: int = 200
     MAX_VMID: int = 500
+    PUBLIC_BRIDGE: str = "vmbr0"
+    MANAGEMENT_BRIDGE: str = "vmbr1"
     
     # Logging
     LOG_LEVEL: str = "INFO"
