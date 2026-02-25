@@ -27,6 +27,9 @@ class AnsibleService:
                 stdout=f"Playbook file not found: {request.playbook_name}"
             )
 
+        
+        # TODO: Inventory di sync dengan challeng service kalo perlu
+        
         # Siapkan Inventory dinamis (Host tunggal)
         inventory_content = {
             "all": {

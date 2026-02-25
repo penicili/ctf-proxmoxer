@@ -1,0 +1,23 @@
+[project]
+name = "ctf-proxmoxer"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "uvicorn",
+    "fastapi",
+    "sqlalchemy",
+    "alembic",
+    "pymysql",
+    "proxmoxer",
+    "paramiko",
+    "pydantic",
+    "pydantic-settings",
+    "python-dotenv",
+    "loguru",
+    "httpie",
+    "pytest",
+    "ansible-runner",
+    "ansible-core",
+]
