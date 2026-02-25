@@ -1,7 +1,7 @@
 from pydantic import BaseModel, ConfigDict
 from typing import Optional, List
 from datetime import datetime
-from schemas.types.vm_types import VMResult
+from schemas.types.Vm_types import VMResult
 
 class ChallengeResponse(BaseModel):
     """Response model untuk single challenge"""

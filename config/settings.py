@@ -1,17 +1,16 @@
 import os
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field
-from dotenv import load_dotenv
-
-load_dotenv()
+from pydantic import Field, ConfigDict
 
 
 class Settings(BaseSettings):
+
+    
     # Application
     APP_NAME: str = "CTF Platform"
     VERSION: str = "0.1.0"
-    DEBUG: bool = False
+    DEBUG: bool = True
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     API_PREFIX: str = "/api/v1"
@@ -69,11 +68,6 @@ class Settings(BaseSettings):
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "ctf_platform.log"
-    
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
 
 
 # Create global settings instance

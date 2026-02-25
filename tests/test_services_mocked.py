@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 from schemas.types.Vm_types import VMResult, VMInfo
 from schemas.types.ansible_types import AnsiblePlaybookParams, AnsiblePlaybookReturn
-from schemas.types.Challenge_types import ChallengeResult
+from schemas.types.challenge_types import ChallengeResult
 from services.proxmox_service import ProxmoxService
 from services.ansible_service import AnsibleService
 from services.challange_service import ChallengeService

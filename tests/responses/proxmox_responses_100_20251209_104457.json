@@ -1,0 +1,243 @@
+{
+  "timestamp": "2025-12-09T10:44:32.158557",
+  "node": "pve",
+  "responses": {
+    "status_initial": {
+      "status": "stopped",
+      "maxmem": 2147483648,
+      "netout": 0,
+      "maxdisk": 16106127360,
+      "uptime": 0,
+      "qmpstatus": "stopped",
+      "cpus": 1,
+      "ha": {
+        "managed": 0
+      },
+      "cpu": 0,
+      "disk": 0,
+      "memhost": 0,
+      "name": "ubuntu-servertest",
+      "mem": 0,
+      "netin": 0,
+      "vmid": 100
+    },
+    "start_vm": "UPID:pve:00003B66:00082154:69379B2C:qmstart:100:root@pam:",
+    "status_after_start": {
+      "nics": {
+        "tap100i0": {
+          "netout": 0,
+          "netin": 0
+        }
+      },
+      "pressureiofull": 0.14,
+      "uptime": 4,
+      "ballooninfo": {
+        "actual": 2147483648,
+        "max_mem": 2147483648
+      },
+      "maxdisk": 16106127360,
+      "maxmem": 2147483648,
+      "status": "running",
+      "diskwrite": 1024,
+      "proxmox-support": {
+        "query-bitmap-info": true,
+        "pbs-dirty-bitmap-savevm": true,
+        "pbs-masterkey": true,
+        "pbs-dirty-bitmap-migration": true,
+        "pbs-library-version": "2.0.1 (2b8ebba0cffecd479f296aaad82d8bec89355599)",
+        "backup-fleecing": true,
+        "backup-max-workers": true,
+        "backup-access-api": true,
+        "pbs-dirty-bitmap": true
+      },
+      "running-qemu": "10.1.2",
+      "qmpstatus": "running",
+      "blockstat": {
+        "scsi0": {
+          "zone_append_bytes": 0,
+          "invalid_flush_operations": 0,
+          "timed_stats": [],
+          "invalid_unmap_operations": 0,
+          "wr_bytes": 1024,
+          "failed_flush_operations": 0,
+          "wr_highest_offset": 253764608,
+          "rd_total_time_ns": 804956079,
+          "idle_time_ns": 545303,
+          "flush_total_time_ns": 0,
+          "wr_operations": 1,
+          "wr_merged": 0,
+          "unmap_total_time_ns": 0,
+          "failed_unmap_operations": 0,
+          "account_failed": true,
+          "unmap_bytes": 0,
+          "zone_append_total_time_ns": 0,
+          "rd_operations": 2271,
+          "unmap_operations": 0,
+          "rd_merged": 0,
+          "zone_append_merged": 0,
+          "invalid_rd_operations": 0,
+          "invalid_wr_operations": 0,
+          "account_invalid": true,
+          "flush_operations": 0,
+          "unmap_merged": 0,
+          "zone_append_operations": 0,
+          "invalid_zone_append_operations": 0,
+          "rd_bytes": 37216768,
+          "failed_wr_operations": 0,
+          "failed_zone_append_operations": 0,
+          "failed_rd_operations": 0,
+          "wr_total_time_ns": 432359
+        }
+      },
+      "netin": 0,
+      "pressurememoryfull": 0,
+      "pressurecpusome": 0,
+      "memhost": 108796928,
+      "name": "ubuntu-servertest",
+      "pid": 15229,
+      "pressurecpufull": 0,
+      "pressurememorysome": 0,
+      "netout": 0,
+      "balloon": 2147483648,
+      "diskread": 37216768,
+      "pressureiosome": 0.14,
+      "disk": 0,
+      "cpu": 0,
+      "ha": {
+        "managed": 0
+      },
+      "cpus": 1,
+      "running-machine": "pc-i440fx-10.1+pve0",
+      "vmid": 100,
+      "mem": 108796928
+    },
+    "stop_vm": "UPID:pve:00003BDC:0008237A:69379B31:qmstop:100:root@pam:",
+    "status_after_stop": {
+      "memhost": 0,
+      "name": "ubuntu-servertest",
+      "mem": 0,
+      "netin": 0,
+      "vmid": 100,
+      "qmpstatus": "stopped",
+      "ha": {
+        "managed": 0
+      },
+      "cpus": 1,
+      "cpu": 0,
+      "disk": 0,
+      "status": "stopped",
+      "maxmem": 2147483648,
+      "uptime": 0,
+      "maxdisk": 16106127360,
+      "netout": 0
+    },
+    "vm_config": {
+      "sockets": 1,
+      "scsi0": "local-lvm:vm-100-disk-0,iothread=1,size=15G",
+      "scsihw": "virtio-scsi-single",
+      "boot": "order=scsi0;net0",
+      "cores": 1,
+      "net0": "virtio=BC:24:11:60:FF:BF,bridge=vmbr0,firewall=1",
+      "cpu": "x86-64-v2-AES",
+      "numa": 0,
+      "name": "ubuntu-servertest",
+      "memory": "2048",
+      "vmgenid": "a4c34670-4905-431f-96e6-23ba5614032d",
+      "meta": "creation-qemu=10.1.2,ctime=1764751935",
+      "ostype": "l26",
+      "digest": "c046fd1a2fe78da532e90c06b99f6ec19258b6e5",
+      "smbios1": "uuid=aec03365-4666-4592-bd5b-0e86060230d4"
+    },
+    "start_vm_again": "UPID:pve:00003BF1:000825B2:69379B37:qmstart:100:root@pam:",
+    "status_final": {
+      "diskwrite": 0,
+      "proxmox-support": {
+        "pbs-masterkey": true,
+        "query-bitmap-info": true,
+        "pbs-dirty-bitmap-savevm": true,
+        "backup-max-workers": true,
+        "pbs-dirty-bitmap": true,
+        "backup-access-api": true,
+        "pbs-dirty-bitmap-migration": true,
+        "pbs-library-version": "2.0.1 (2b8ebba0cffecd479f296aaad82d8bec89355599)",
+        "backup-fleecing": true
+      },
+      "status": "running",
+      "maxmem": 2147483648,
+      "uptime": 5,
+      "ballooninfo": {
+        "actual": 2147483648,
+        "max_mem": 2147483648
+      },
+      "maxdisk": 16106127360,
+      "pressureiofull": 0,
+      "nics": {
+        "tap100i0": {
+          "netin": 0,
+          "netout": 0
+        }
+      },
+      "pressurecpusome": 0,
+      "memhost": 43968512,
+      "name": "ubuntu-servertest",
+      "pressurememoryfull": 0,
+      "netin": 0,
+      "blockstat": {
+        "scsi0": {
+          "unmap_total_time_ns": 0,
+          "failed_unmap_operations": 0,
+          "account_failed": true,
+          "flush_total_time_ns": 0,
+          "wr_operations": 0,
+          "idle_time_ns": 1456616373,
+          "wr_merged": 0,
+          "wr_highest_offset": 0,
+          "failed_flush_operations": 0,
+          "rd_total_time_ns": 200203758,
+          "zone_append_bytes": 0,
+          "timed_stats": [],
+          "invalid_flush_operations": 0,
+          "wr_bytes": 0,
+          "invalid_unmap_operations": 0,
+          "failed_rd_operations": 0,
+          "wr_total_time_ns": 0,
+          "unmap_merged": 0,
+          "failed_zone_append_operations": 0,
+          "zone_append_operations": 0,
+          "failed_wr_operations": 0,
+          "invalid_zone_append_operations": 0,
+          "rd_bytes": 1925632,
+          "invalid_rd_operations": 0,
+          "account_invalid": true,
+          "invalid_wr_operations": 0,
+          "flush_operations": 0,
+          "unmap_bytes": 0,
+          "zone_append_total_time_ns": 0,
+          "rd_operations": 117,
+          "unmap_operations": 0,
+          "rd_merged": 0,
+          "zone_append_merged": 0
+        }
+      },
+      "qmpstatus": "running",
+      "running-qemu": "10.1.2",
+      "pressureiosome": 0,
+      "diskread": 1925632,
+      "netout": 0,
+      "balloon": 2147483648,
+      "pressurememorysome": 0,
+      "pid": 15358,
+      "pressurecpufull": 0,
+      "mem": 43968512,
+      "running-machine": "pc-i440fx-10.1+pve0",
+      "vmid": 100,
+      "ha": {
+        "managed": 0
+      },
+      "cpus": 1,
+      "disk": 0,
+      "cpu": 0
+    }
+  },
+  "vmid": 100
+}

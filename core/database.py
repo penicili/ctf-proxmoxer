@@ -6,13 +6,13 @@ from config.settings import settings
 from loguru import logger
 
 # Create SQLAlchemy engine
-if settings.DATABASE_URL.startswith("sqlite"):
+if settings.DB_URL.startswith("sqlite"):
     engine = create_engine(
-        settings.DATABASE_URL,
+        settings.DB_URL,
         connect_args={"check_same_thread": False}
     )
 else:
-    engine = create_engine(settings.DATABASE_URL,
+    engine = create_engine(settings.DB_URL,
                            pool_pre_ping=True,
                            echo=settings.DEBUG)
 
