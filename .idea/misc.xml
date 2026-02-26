@@ -3,5 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="uv (ctf-proxmoxer)" />
   </component>
-  <component name="ProjectRootManager" version="2" project-jdk-name="uv (ctf-proxmoxer) (2)" project-jdk-type="Python SDK" />
+  <component name="ProjectRootManager" version="2" project-jdk-name="3.12 WSL (Ubuntu): (/home/windaydream/.virtualenvs/ctf-proxmoxer/bin/python)" project-jdk-type="Python SDK" />
 </project>

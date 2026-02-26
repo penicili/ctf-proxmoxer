@@ -16,28 +16,19 @@ class Settings(BaseSettings):
     API_PREFIX: str = "/api/v1"
         
     # Database
-    DB_PLATFORM: str = "mysql"
+    DB_PLATFORM: str = "sqlite"
     DB_USER: str = "user"
     DB_PASSWORD: str = "password"
-    DB_HOST: str = "localhost"
-    DB_PORT: int = 3006
+    DB_HOST: str = "127.0.0.1"
+    DB_PORT: int = 3306
     DB_DATABASE: str = "ctf_db"
-    
-    @property
-    def DB_URL(self) -> str:
-        if self.DB_PLATFORM == "sqlite":
-            return f"sqlite:///{self.DB_DATABASE}.db"
-        elif self.DB_PLATFORM == "mysql":
-            return f"mysql+pymysql://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
-        elif self.DB_PLATFORM == "postgresql":
-            return f"postgresql+psycopg2://{self.DB_USER}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_DATABASE}"
-        else:
-            raise ValueError(f"Unsupported DB_PLATFORM: {self.DB_PLATFORM}")
+
+    DB_URL: str= "sqlite:///./ctf_platform.db"
     
     # Proxmox
-    PROXMOX_HOST: str = Field(default="192.168.1.100")
-    PROXMOX_USER: str = Field(default="root@pam")
-    PROXMOX_PASSWORD: str = Field(default="")
+    PROXMOX_HOST: str = "192.168.1.102"
+    PROXMOX_USER: str = "root@pam"
+    PROXMOX_PASSWORD: str = "Apakah@55"
     PROXMOX_NODE: str = "pve"
     PROXMOX_VERIFY_SSL: bool = False
     
