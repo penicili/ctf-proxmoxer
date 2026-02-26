@@ -6,6 +6,11 @@ from pydantic import Field, ConfigDict
 
 class Settings(BaseSettings):
 
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
     
     # Application
     APP_NAME: str = "CTF Platform"
