@@ -6,6 +6,9 @@ from core.logging import logger
 
 
 class AnsibleService:
+    """
+    Service yang berinteraksi dengan ansible, mulai dari setup variables sampai menjalankan berbagai playbooks
+    """
     def __init__(self, settings: Settings):
         self.settings = settings
         self.project_dir = Path.cwd()
@@ -23,7 +26,9 @@ class AnsibleService:
 
     def run_playbook(self, playbook, hosts):
         # TODO: Rewrite this function
-        """Run ansible playbook"""
+        """Run ansible playbook
+        :param str playbook: nama playbook yang dijalankan
+        :param str hosts: nama host/group yang dituju di inventory"""
         r = ansible_runner.run(
             playbook= playbook,
             vars= self.vars_file,
