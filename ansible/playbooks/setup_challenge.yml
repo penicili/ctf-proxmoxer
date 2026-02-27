@@ -1,53 +1,11 @@
 ---
-- name: Setup CTF Challenge VM Base Template
-  hosts: all
-  become: true
-  gather_facts: false
+- name: Setup challenge VM
+  hosts: {{ target_vm}}
+  gather_facts: true
 
   tasks:
-    - name: Ensure Python is installed (required for Ansible modules)
-      raw: test -e /usr/bin/python || (apt update && apt install -y python3 python3-pip)
-      changed_when: false # Jangan tandai sebagai "changed" kecuali kita benar-benar install
-
-    - name: Install Nginx
-      ansible.builtin.apt:
-        name: nginx
-        state: present
-        update_cache: true
-
-    - name: Clone challenge repository from Github
+    - name: Clone challenge repository
       ansible.builtin.git:
         repo: "{{ challenge_repo_url }}"
         dest: /opt/challenge
-
-    - name: Configure Nginx for the challenge
-      ansible.builtin.template:
-        src: nginx_challenge.conf.j2
-        dest: /etc/nginx/sites-available/challenge.conf
-
-    - name: Deploy challenge flag
-      ansible.builtin.copy:
-        content: "{{ challenge_flag }}" # Variabel dari extra_vars
-        dest: "{{ challenge_flag_path }}" # Variabel dari extra_vars
-        owner: root
-        group: root
-        mode: '0644'
-
-    - name: Start Nginx service
-      ansible.builtin.service:
-        name: nginx
-        state: started
-        enabled: true
-
-    - name: Install  qemu guest agent
-      ansible.builtin.apt:
-        name: qemu-guest-agent
-        state: present
-        update_cache: true
-
-    - name: Start qemu guest agent service
-      ansible.builtin.service:
-        name: qemu-guest-agent
-        state: started
-        enabled: true
-
+        version: master

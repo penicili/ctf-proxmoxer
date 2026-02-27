@@ -1,0 +1,21 @@
+---
+- name: Create VM using cloud image
+  hosts: pve
+  gather_facts: false
+
+  tasks:
+    - name: Download cloud image
+      ansible.builtin.get_url:
+        url: "{{ cloud_image_url }}"
+        dest: "/tmp/{{ cloud_image_name }}"
+        mode: '0644'
+
+    - name: Change image format to qcow2
+      ansible.builtin.command:
+        cmd: "qemu-img convert -f qcow2 -O qcow2 /tmp/{{ cloud_image_name }} /tmp/{{ vm_name }}.qcow2"
+      args:
+        creates: "/tmp/{{ vm_name }}.qcow2"
+
+    - name: Change image size to 10G
+      ansible.builtin.command:
+        cmd: "qemu-img resize /tmp/{{ vm_name }}.qcow2 10G"

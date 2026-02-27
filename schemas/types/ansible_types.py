@@ -7,10 +7,10 @@ class AnsiblePlaybookParams(BaseModel):
     """
     host: str = Field(..., description="IP Address atau Hostname target")
     playbook_name: str = Field(..., description="Nama file playbook (contoh: setup_web.yml)")
-    user: str = Field(default="root", description="SSH User")
-    # Private key opsional, jika tidak ada akan pakai default system/settings
-    private_key: Optional[str] = Field(None, description="Isi Private Key (string) jika custom") 
-    extra_vars: Dict[str, Any] = Field(default_factory=dict, description="Variabel tambahan untuk playbook")
+    challenge_id: int = Field(..., description="Challenge ID")
+    challenge_name: str = Field(..., description="Nama Challenge")
+    vulnhub_machine: Optional[str] = Field(None, description="Vulhub machine name")
+    vm_id: Optional[int] = Field(None, description="ID VM (jika sudah diketahui)")
 
 class AnsiblePlaybookReturn(BaseModel):
     """

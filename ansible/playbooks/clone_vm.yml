@@ -1,0 +1,16 @@
+---
+- name: Clone VM
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Clone VM template
+      community.proxmox.proxmox_kvm:
+        api_user: "{{ proxmox_api_user }}"
+        api_password: "{{ proxmox_api_password }}"
+        api_host: "{{ proxmox_api_host }}"
+        vmid: "{{ vmid }}"
+        name: "{{ vm_name }}"
+        clone: "{{ vm_template }}"
+        full: true
+        state: present
