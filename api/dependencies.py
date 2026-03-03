@@ -1,35 +1,28 @@
+# dependencies_compact.py
 from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
-from config.settings import Settings, settings
+from config.settings import settings
 from core.database import get_db
 from services.proxmox_service import ProxmoxService
 from services.ansible_service import AnsibleService
 from services.challenge_service import ChallengeService
 
+# Type aliases
+SettingsDep = Annotated[dict, Depends(lambda: settings)]
+DbSessionDep = Annotated[Session, Depends(get_db)]
 
-def get_settings() -> Settings:
-    return settings
-
-def get_proxmox_service(
-    settings: Settings = Depends(get_settings)
-) -> ProxmoxService:
-    return ProxmoxService(settings)
-
-def get_ansible_service(
-    settings: Settings = Depends(get_settings)
-) -> AnsibleService:
-    return AnsibleService(settings)
+# Service dependencies
+ProxmoxServiceDep = Annotated[ProxmoxService, Depends(lambda: ProxmoxService(settings))]
+AnsibleServiceDep = Annotated[AnsibleService, Depends(lambda: AnsibleService(settings))]
 
 def get_challenge_service(
-    db: Session = Depends(get_db),
-    proxmox_service: ProxmoxService = Depends(get_proxmox_service),
-    ansible_service: AnsibleService = Depends(get_ansible_service),
-    settings: Settings = Depends(get_settings),
+    db: DbSessionDep,
+    proxmox: ProxmoxServiceDep,
+    ansible: AnsibleServiceDep,
 ) -> ChallengeService:
-    return ChallengeService(db, proxmox_service, ansible_service, settings)
+    """Get ChallengeService instance"""
+    return ChallengeService(db, proxmox, ansible, settings)
 
 ChallengeServiceDep = Annotated[ChallengeService, Depends(get_challenge_service)]
-ProxmoxServiceDep = Annotated[ProxmoxService, Depends(get_proxmox_service)]
-AnsibleServiceDep = Annotated[AnsibleService, Depends(AnsibleService)]

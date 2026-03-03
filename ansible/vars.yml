@@ -1,0 +1,6 @@
+proxmox_host: 192.168.1.102
+proxmox_user: root@pam
+proxmox_password: Apakah@55
+proxmox_node: pve
+proxmox_verify_ssl: False
+        

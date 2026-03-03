@@ -6,11 +6,24 @@
   tasks:
     - name: Clone VM template
       community.proxmox.proxmox_kvm:
-        api_user: "{{ proxmox_api_user }}"
-        api_password: "{{ proxmox_api_password }}"
-        api_host: "{{ proxmox_api_host }}"
-        vmid: "{{ vmid }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        api_host: "{{ proxmox_host }}"
         name: "{{ vm_name }}"
         clone: "{{ vm_template }}"
-        full: true
+        node: "{{ proxmox_node }}"
+        full: false
         state: present
+        agent: enabled
+
+    - name: Get Vm info
+      community.proxmox.proxmox_vm_info:
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        api_host: "{{ proxmox_host }}"
+        vmid: "{{ vmid }}"
+      register: vm_info
+
+    - name: show ip address
+      ansible.builtin.debug:
+        msg: "VM Info: {{ vm_info }}"

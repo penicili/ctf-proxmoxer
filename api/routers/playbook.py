@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+from loguru import logger
 
 from api.dependencies import AnsibleServiceDep
 
@@ -44,5 +45,23 @@ def run_playbook(ansible_service: AnsibleServiceDep, request: RunPlaybookRequest
     ansible_service.run_playbook(request.playbook_name, request.host)
     return{
         "message": f"Playbook {request.playbook_name} execution started"
+    }
+
+@router.post("/setup_challenge")
+def setup_vm(ansible_service: AnsibleServiceDep):
+    """Buat VM baru dan setup challenge di VM tersebut"""
+    # Clone
+    # Gimana cara dapet ip dari vm yang udah dibuat?
+    logger.info("Cloning VM")
+    vm = ansible_service.run_playbook("clone_vm.yml", "localhost", {
+        "vmid": 100,
+        "vm_name": "test-vm",
+        "vm_template": "cloud-init"
+    })
+
+    # Setup challenge di VM
+    #TODO: implementasi setup challenge dengan ansible playbook
+    return{
+        "message": "VM creation playbook execution started"
     }
 
