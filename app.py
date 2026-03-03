@@ -6,7 +6,7 @@ from core.database import engine, Base
 from core.logging import logger
 
 # Import Routers
-from api.routers import challenges, vms, health
+from api.routers import health,playbook
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -31,8 +31,7 @@ app = FastAPI(
 )
 
 # Register Routers
-app.include_router(challenges.router, prefix="/api")
-app.include_router(vms.router, prefix="/api")
+app.include_router(playbook.router, prefix="/api")
 app.include_router(health.router, prefix="/api")
 
 @app.get("/")

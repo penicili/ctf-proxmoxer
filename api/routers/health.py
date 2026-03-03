@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from config.settings import settings
 from api.dependencies import ProxmoxServiceDep
+from api.dependencies import AnsibleServiceDep
 
 router = APIRouter(
     prefix="/health",
@@ -26,3 +27,4 @@ def health_check(proxmox_service: ProxmoxServiceDep):
         "proxmox": proxmox_status,
         "version": settings.VERSION
     }
+

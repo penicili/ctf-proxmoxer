@@ -34,3 +34,10 @@ class AnsibleService:
             vars= self.vars_file,
             hosts= hosts,
         )
+
+    def get_playbooks(self):
+        """List semua playbook yang tersedia di ansible/playbooks"""
+        playbooks = []
+        for file in self.playbook_dir.glob("*.yml"):
+            playbooks.append(file.name)
+        return playbooks

@@ -32,3 +32,4 @@ def get_challenge_service(
 
 ChallengeServiceDep = Annotated[ChallengeService, Depends(get_challenge_service)]
 ProxmoxServiceDep = Annotated[ProxmoxService, Depends(get_proxmox_service)]
+AnsibleServiceDep = Annotated[AnsibleService, Depends(AnsibleService)]

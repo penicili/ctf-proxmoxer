@@ -1,0 +1,11 @@
+---
+- name: Hello world
+  hosts: localhost
+
+  tasks:
+    - name: Ping host
+      ansible.builtin.ping:
+
+    - name: Print facts
+      ansible.builtin.debug:
+        msg: Hello world

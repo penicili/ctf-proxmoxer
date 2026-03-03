@@ -28,3 +28,9 @@ class ChallengeService:
         self.proxmox_service = proxmox_service
         self.ansible_service = ansible_service
         self.settings = settings
+
+    def create_challenge(self):
+        pass
+
+    def submit_challenge(self):
+        pass
