@@ -1,0 +1,138 @@
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from typing import Optional
+
+from api.dependencies import DbSessionDep
+from models import Challenge, Deployment, Level
+from models.Deployment import DeploymentStatus
+from schemas.requests.challenges_requests import CreateChallengeRequest
+from schemas.responses.challenges_responses import (
+    ChallengeResponse,
+    ChallengeListResponse,
+    CreateChallengeResponse,
+)
+from services.challenge_service import ChallengeService, deploy_challenge_bg, terminate_challenge_bg
+from config.settings import settings
+from core.logging import logger
+
+router = APIRouter(
+    prefix="/challenges",
+    tags=["Challenges"]
+)
+
+
+def _build_response(challenge: Challenge) -> ChallengeResponse:
+    """Susun ChallengeResponse dari Challenge + relasi Deployment + Level."""
+    dep: Optional[Deployment] = challenge.deployment
+    return ChallengeResponse(
+        id=challenge.id,
+        level_id=challenge.level_id,
+        level_name=challenge.level.name if challenge.level else None,
+        team=challenge.team,
+        flag=challenge.flag,
+        flag_submitted=challenge.flag_submitted,
+        flag_submitted_at=challenge.flag_submitted_at,
+        is_active=challenge.is_active,
+        created_at=challenge.created_at,
+        updated_at=challenge.updated_at,
+        deployment_status=dep.status.value if dep else None,
+        vm_id=dep.vm_id if dep else None,
+        vm_name=dep.vm_name if dep else None,
+        vm_ip=dep.vm_ip if dep else None,
+        error_message=dep.error_message if dep else None,
+        started_at=dep.started_at if dep else None,
+    )
+
+
+@router.get("", response_model=ChallengeListResponse)
+def list_challenges(
+    db: DbSessionDep,
+    status: Optional[str] = None,
+    team: Optional[str] = None,
+):
+    query = db.query(Challenge)
+    if team:
+        query = query.filter(Challenge.team == team)
+    if status:
+        query = (
+            query
+            .join(Challenge.deployment)
+            .filter(Deployment.status == status)
+        )
+    challenges = query.order_by(Challenge.id.desc()).all()
+    return ChallengeListResponse(
+        total=len(challenges),
+        challenges=[_build_response(c) for c in challenges],
+    )
+
+
+@router.post("", response_model=CreateChallengeResponse, status_code=202)
+def create_challenge(
+    db: DbSessionDep,
+    request: CreateChallengeRequest,
+    background_tasks: BackgroundTasks,
+):
+    # Validasi level
+    level = db.query(Level).filter(Level.id == request.level_id, Level.is_active == True).first()
+    if not level:
+        raise HTTPException(status_code=404, detail="Level not found or inactive")
+
+    # Generate flag
+    svc = ChallengeService(db, None, None, settings)  # type: ignore[arg-type]
+    flag = svc.generate_flag()
+
+    # Buat Challenge record
+    challenge = Challenge(
+        level_id=request.level_id,
+        team=request.team_name,
+        flag=flag,
+        is_active=True,
+    )
+    db.add(challenge)
+    db.flush()  # dapat challenge.id tanpa commit
+
+    # Buat Deployment record
+    deployment = Deployment(
+        challenge_id=challenge.id,
+        status=DeploymentStatus.PENDING,
+    )
+    db.add(deployment)
+    db.commit()
+    db.refresh(challenge)
+
+    logger.info(f"Challenge {challenge.id} created for team '{request.team_name}', queuing deployment")
+
+    # Queue background task
+    background_tasks.add_task(deploy_challenge_bg, challenge.id)
+
+    return CreateChallengeResponse(
+        success=True,
+        message="Challenge deployment started",
+        challenge_id=challenge.id,
+        flag=flag,
+    )
+
+
+@router.get("/{challenge_id}", response_model=ChallengeResponse)
+def get_challenge(db: DbSessionDep, challenge_id: int):
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+    return _build_response(challenge)
+
+
+@router.delete("/{challenge_id}")
+def terminate_challenge(
+    db: DbSessionDep,
+    challenge_id: int,
+    background_tasks: BackgroundTasks,
+):
+    challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+    if not challenge:
+        raise HTTPException(status_code=404, detail="Challenge not found")
+
+    dep = challenge.deployment
+    if dep and dep.status in (DeploymentStatus.TERMINATED, DeploymentStatus.TERMINATING):
+        raise HTTPException(status_code=400, detail=f"Challenge is already {dep.status.value}")
+
+    background_tasks.add_task(terminate_challenge_bg, challenge.id)
+    return {"message": "Challenge termination started"}

@@ -15,11 +15,16 @@ class ChallengeResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     
+    # Level info
+    level_name: Optional[str] = None
+
     # Deployment info (optional)
     deployment_status: Optional[str] = None
     vm_id: Optional[int] = None
     vm_name: Optional[str] = None
     vm_ip: Optional[str] = None
+    error_message: Optional[str] = None
+    started_at: Optional[datetime] = None
     
     model_config = ConfigDict(from_attributes=True)
 

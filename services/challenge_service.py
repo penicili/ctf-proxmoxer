@@ -1,36 +1,198 @@
-from typing import Dict, Any, List, Optional, Sequence
+import secrets
 from datetime import datetime
-import random
+from typing import Optional
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
-from models import Challenge, Deployment, Level
-from services.proxmox_service import ProxmoxService
-from services.ansible_service import AnsibleService  # NEW
-from config.settings import Settings
+from core.database import SessionLocal
 from core.logging import logger
 from core.exceptions import VMCreationError, ResourceNotFoundError
-from schemas.types.Vm_types import VMResult
-from schemas.types.challenge_types import ChallengeResult
-from schemas.types.ansible_types import AnsiblePlaybookParams, AnsiblePlaybookReturn  # NEW
+from config.settings import Settings
+from models import Challenge, Deployment, Level
+from models.Deployment import DeploymentStatus
+from services.proxmox_service import ProxmoxService
+from services.ansible_service import AnsibleService
 
 
 class ChallengeService:
     """
-    Service untuk manajemen Challenge dan memanggil ProxmoxService sesuai kebutuhan.
-    Business logic utama aplikasi.
+    Business logic untuk Challenge.
+    Mengorkestrasikan ProxmoxService dan AnsibleService.
     """
 
-    def __init__(self, db: Session, proxmox_service: ProxmoxService, ansible_service: AnsibleService,
-                 settings: Settings):
+    def __init__(
+        self,
+        db: Session,
+        proxmox_service: ProxmoxService,
+        ansible_service: AnsibleService,
+        settings: Settings,
+    ):
         self.db = db
         self.proxmox_service = proxmox_service
         self.ansible_service = ansible_service
         self.settings = settings
 
-    def create_challenge(self):
-        pass
+    def generate_flag(self) -> str:
+        """Generate flag unik: CTF{RANDOM...}"""
+        charset = self.settings.FLAG_CHARSET
+        body = ''.join(secrets.choice(charset) for _ in range(self.settings.FLAG_LENGTH))
+        return f"{self.settings.FLAG_PREFIX}{{{body}}}"
 
     def submit_challenge(self):
-        pass
+        pass  # TODO: untuk future use jika diperlukan
+
+
+# ── Background Task Functions ────────────────────────────────────────────────
+# Fungsi ini berjalan di luar request context, sehingga harus membuat
+# DB session sendiri (tidak bisa pakai session dari dependency injection).
+
+def deploy_challenge_bg(challenge_id: int) -> None:
+    """
+    Background task: clone VM di Proxmox lalu jalankan setup_challenge playbook.
+    Dipanggil setelah Challenge dan Deployment record dibuat dengan status PENDING.
+    """
+    db: Session = SessionLocal()
+    try:
+        from config.settings import settings
+        proxmox_service = ProxmoxService(settings)
+        ansible_service = AnsibleService(settings)
+
+        challenge: Optional[Challenge] = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+        if not challenge:
+            logger.error(f"[deploy_bg] Challenge {challenge_id} not found")
+            return
+
+        deployment: Optional[Deployment] = challenge.deployment
+        if not deployment:
+            logger.error(f"[deploy_bg] Deployment for challenge {challenge_id} not found")
+            return
+
+        level: Optional[Level] = challenge.level
+
+        # ── Step 1: CREATING ────────────────────────────────────────────────
+        deployment.status = DeploymentStatus.CREATING
+        db.commit()
+        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}'")
+
+        # ── Step 2: Clone VM di Proxmox ─────────────────────────────────────
+        vm_config = {}
+        if level and level.template_url:
+            vm_config["template_url"] = level.template_url
+
+        vm_result = proxmox_service.create_vm(
+            level_id=challenge.level_id,
+            team=challenge.team,
+            time_limit=settings.DEFAULT_CHALLENGE_DURATION,
+            config=vm_config,
+        )
+
+        deployment.vm_id   = vm_result.vmid
+        deployment.vm_name = vm_result.info.name if vm_result.info else None
+        # TODO: IP Discovery — set setelah VM boot dan IP tersedia
+        # deployment.vm_ip = ...
+        db.commit()
+        logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}")
+
+        # ── Step 3: Setup challenge di VM via Ansible ───────────────────────
+        ansible_service.run_playbook(
+            playbook="setup_challenge.yml",
+            hosts=deployment.vm_ip or "localhost",
+            extra_vars={
+                "challenge_id": challenge.id,
+                "level_id":     challenge.level_id,
+                "team":         challenge.team,
+                "flag":         challenge.flag,
+                "vmid":         vm_result.vmid,
+            },
+        )
+        logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
+
+        # ── Step 4: RUNNING ─────────────────────────────────────────────────
+        deployment.status     = DeploymentStatus.RUNNING
+        deployment.started_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"[deploy_bg] Challenge {challenge_id} is now RUNNING")
+
+    except (VMCreationError, ResourceNotFoundError) as e:
+        logger.error(f"[deploy_bg] Challenge {challenge_id} failed: {e}")
+        _mark_error(db, challenge_id, str(e))
+    except Exception as e:
+        logger.exception(f"[deploy_bg] Unexpected error for challenge {challenge_id}: {e}")
+        _mark_error(db, challenge_id, str(e))
+    finally:
+        db.close()
+
+
+def terminate_challenge_bg(challenge_id: int) -> None:
+    """
+    Background task: stop dan hapus VM, update status ke TERMINATED.
+    """
+    db: Session = SessionLocal()
+    try:
+        from config.settings import settings
+        proxmox_service = ProxmoxService(settings)
+        ansible_service = AnsibleService(settings)
+
+        challenge: Optional[Challenge] = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+        if not challenge:
+            logger.error(f"[terminate_bg] Challenge {challenge_id} not found")
+            return
+
+        deployment: Optional[Deployment] = challenge.deployment
+        if not deployment:
+            logger.error(f"[terminate_bg] Deployment for challenge {challenge_id} not found")
+            return
+
+        # ── Step 1: TERMINATING ─────────────────────────────────────────────
+        deployment.status = DeploymentStatus.TERMINATING
+        db.commit()
+        logger.info(f"[terminate_bg] Terminating challenge {challenge_id}")
+
+        # ── Step 2: (Opsional) Cleanup playbook ─────────────────────────────
+        if deployment.vm_ip:
+            try:
+                ansible_service.run_playbook(
+                    playbook="post_challenge.yml",
+                    hosts=deployment.vm_ip,
+                    extra_vars={
+                        "vmid":  deployment.vm_id,
+                        "team":  challenge.team,
+                    },
+                )
+            except Exception as e:
+                logger.warning(f"[terminate_bg] post_challenge playbook failed (non-fatal): {e}")
+
+        # ── Step 3: Stop VM ─────────────────────────────────────────────────
+        if deployment.vm_id:
+            try:
+                proxmox_service.stop_vm(deployment.vm_id)
+                deployment.stopped_at = datetime.utcnow()
+                db.commit()
+                logger.info(f"[terminate_bg] VM {deployment.vm_id} stopped")
+            except Exception as e:
+                logger.warning(f"[terminate_bg] stop_vm failed (non-fatal): {e}")
+
+        # ── Step 4: TERMINATED ──────────────────────────────────────────────
+        deployment.status        = DeploymentStatus.TERMINATED
+        deployment.terminated_at = datetime.utcnow()
+        challenge.is_active      = False
+        db.commit()
+        logger.info(f"[terminate_bg] Challenge {challenge_id} terminated")
+
+    except Exception as e:
+        logger.exception(f"[terminate_bg] Unexpected error for challenge {challenge_id}: {e}")
+        _mark_error(db, challenge_id, f"Termination failed: {e}")
+    finally:
+        db.close()
+
+
+def _mark_error(db: Session, challenge_id: int, message: str) -> None:
+    """Helper: set deployment status ke ERROR."""
+    try:
+        challenge = db.query(Challenge).filter(Challenge.id == challenge_id).first()
+        if challenge and challenge.deployment:
+            challenge.deployment.status        = DeploymentStatus.ERROR
+            challenge.deployment.error_message = message
+            db.commit()
+    except Exception as e:
+        logger.error(f"[_mark_error] Failed to mark error for challenge {challenge_id}: {e}")
