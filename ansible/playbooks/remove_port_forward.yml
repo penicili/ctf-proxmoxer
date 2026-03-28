@@ -9,7 +9,7 @@
 #   pve_public_ip:  IP publik PVE host (e.g. 192.168.1.102)
 
 - name: Remove port forwarding for challenge VM
-  hosts: "{{ pve_host | default('localhost') }}"
+  hosts: all
   become: true
   gather_facts: false
 

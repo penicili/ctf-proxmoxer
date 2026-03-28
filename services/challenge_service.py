@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from core.database import SessionLocal
 from core.logging import logger
-from core.exceptions import VMCreationError, ResourceNotFoundError
+from core.exceptions import VMCreationError, ResourceNotFoundError, AnsiblePlaybookError
 from config.settings import Settings
 from models import Challenge, Deployment, Level
 from models.Deployment import DeploymentStatus
@@ -75,9 +75,15 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}'")
 
         # ── Step 2: Clone VM di Proxmox ─────────────────────────────────────
-        vm_config = {}
+        vm_config = {
+            "template_vmid": settings.TEMPLATE_VMID,
+        }
+        # Level bisa override template VMID (disimpan di template_url sebagai string angka)
         if level and level.template_url:
-            vm_config["template_url"] = level.template_url
+            try:
+                vm_config["template_vmid"] = int(level.template_url)
+            except ValueError:
+                logger.warning(f"[deploy_bg] Level template_url '{level.template_url}' bukan VMID, pakai default")
 
         vm_result = proxmox_service.create_vm(
             level_id=challenge.level_id,
@@ -129,7 +135,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         db.commit()
         logger.info(f"[deploy_bg] Challenge {challenge_id} is now RUNNING")
 
-    except (VMCreationError, ResourceNotFoundError) as e:
+    except (VMCreationError, ResourceNotFoundError, AnsiblePlaybookError) as e:
         logger.error(f"[deploy_bg] Challenge {challenge_id} failed: {e}")
         _mark_error(db, challenge_id, str(e))
     except Exception as e:

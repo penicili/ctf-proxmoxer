@@ -55,7 +55,8 @@ class Settings(BaseSettings):
     FLAG_LENGTH: int = 32
     FLAG_CHARSET: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     
-    # Network — VMID range
+    # Proxmox VM defaults
+    TEMPLATE_VMID: int = 9000
     STARTING_VMID: int = 200
     MAX_VMID: int = 500
     PUBLIC_BRIDGE: str = "vmbr0"

@@ -1,6 +1,7 @@
 ---
 - name: Setup challenge VM
-  hosts: {{ target_vm}}
+  hosts: all
+  become: true
   gather_facts: true
 
   tasks:

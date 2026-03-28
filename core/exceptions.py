@@ -17,3 +17,11 @@ class ResourceNotFoundError(Exception):
 class VMCreationError(ProxmoxError):
     """Raised when VM creation fails"""
     pass
+
+class AnsibleError(Exception):
+    """Base exception for Ansible related errors"""
+    pass
+
+class AnsiblePlaybookError(AnsibleError):
+    """Raised when an Ansible playbook execution fails"""
+    pass

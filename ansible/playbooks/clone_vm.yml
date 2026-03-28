@@ -1,6 +1,7 @@
 ---
 - name: Clone VM
-  hosts: localhost
+  hosts: all
+  connection: local
   gather_facts: false
 
   tasks:
