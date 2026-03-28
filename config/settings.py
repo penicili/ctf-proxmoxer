@@ -55,11 +55,21 @@ class Settings(BaseSettings):
     FLAG_LENGTH: int = 32
     FLAG_CHARSET: str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
     
-    # Network
+    # Network — VMID range
     STARTING_VMID: int = 200
     MAX_VMID: int = 500
     PUBLIC_BRIDGE: str = "vmbr0"
     MANAGEMENT_BRIDGE: str = "vmbr1"
+
+    # Network — VM internal (cloud-init static IP)
+    VM_SUBNET: str = "10.10.10"
+    VM_GATEWAY: str = "10.10.10.1"
+    VM_NETMASK: int = 24
+
+    # Network — NAT port forwarding
+    PVE_PUBLIC_IP: str = "192.168.1.102"
+    SSH_PORT_BASE: int = 22000
+    HTTP_PORT_BASE: int = 80000
     
     # Logging
     LOG_LEVEL: str = "INFO"

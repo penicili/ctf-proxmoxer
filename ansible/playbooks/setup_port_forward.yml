@@ -1,0 +1,63 @@
+---
+# setup_port_forward.yml
+# Setup iptables DNAT rules di PVE host untuk forward traffic ke VM internal IP
+#
+# Required extra_vars:
+#   vm_ip:          IP internal VM (e.g. 10.10.10.201)
+#   ssh_port:       Port SSH publik (e.g. 22201)
+#   http_port:      Port HTTP publik (e.g. 80201)
+#   pve_public_ip:  IP publik PVE host (e.g. 192.168.1.102)
+
+- name: Setup port forwarding for challenge VM
+  hosts: "{{ pve_host | default('localhost') }}"
+  become: true
+  gather_facts: false
+
+  tasks:
+    - name: Forward SSH port ({{ ssh_port }} -> {{ vm_ip }}:22)
+      ansible.builtin.iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: tcp
+        destination: "{{ pve_public_ip }}"
+        destination_port: "{{ ssh_port }}"
+        jump: DNAT
+        to_destination: "{{ vm_ip }}:22"
+        comment: "ctf-forward-ssh-{{ vm_ip }}"
+
+    - name: Forward HTTP port ({{ http_port }} -> {{ vm_ip }}:80)
+      ansible.builtin.iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: tcp
+        destination: "{{ pve_public_ip }}"
+        destination_port: "{{ http_port }}"
+        jump: DNAT
+        to_destination: "{{ vm_ip }}:80"
+        comment: "ctf-forward-http-{{ vm_ip }}"
+
+    - name: Allow FORWARD to VM for SSH
+      ansible.builtin.iptables:
+        chain: FORWARD
+        protocol: tcp
+        destination: "{{ vm_ip }}"
+        destination_port: "22"
+        jump: ACCEPT
+        comment: "ctf-allow-ssh-{{ vm_ip }}"
+
+    - name: Allow FORWARD to VM for HTTP
+      ansible.builtin.iptables:
+        chain: FORWARD
+        protocol: tcp
+        destination: "{{ vm_ip }}"
+        destination_port: "80"
+        jump: ACCEPT
+        comment: "ctf-allow-http-{{ vm_ip }}"
+
+    - name: MASQUERADE for internal subnet
+      ansible.builtin.iptables:
+        table: nat
+        chain: POSTROUTING
+        source: "{{ vm_ip }}"
+        jump: MASQUERADE
+        comment: "ctf-masq-{{ vm_ip }}"

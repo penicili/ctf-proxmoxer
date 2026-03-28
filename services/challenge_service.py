@@ -88,15 +88,31 @@ def deploy_challenge_bg(challenge_id: int) -> None:
 
         deployment.vm_id   = vm_result.vmid
         deployment.vm_name = vm_result.info.name if vm_result.info else None
-        # TODO: IP Discovery — set setelah VM boot dan IP tersedia
-        # deployment.vm_ip = ...
+        # IP deterministic dari VMID: e.g. VMID 201 → 10.10.10.201
+        deployment.vm_ip = f"{settings.VM_SUBNET}.{vm_result.vmid}"
         db.commit()
-        logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}")
+        logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}, ip={deployment.vm_ip}")
 
-        # ── Step 3: Setup challenge di VM via Ansible ───────────────────────
+        # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
+        ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
+        http_port = settings.HTTP_PORT_BASE + vm_result.vmid
+
+        ansible_service.run_playbook(
+            playbook="setup_port_forward.yml",
+            hosts=settings.PROXMOX_HOST,
+            extra_vars={
+                "vm_ip":     deployment.vm_ip,
+                "ssh_port":  ssh_port,
+                "http_port": http_port,
+                "pve_public_ip": settings.PVE_PUBLIC_IP,
+            },
+        )
+        logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
+
+        # ── Step 4: Setup challenge di VM via Ansible ───────────────────────
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
-            hosts=deployment.vm_ip or "localhost",
+            hosts=deployment.vm_ip,
             extra_vars={
                 "challenge_id": challenge.id,
                 "level_id":     challenge.level_id,
@@ -107,7 +123,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
 
-        # ── Step 4: RUNNING ─────────────────────────────────────────────────
+        # ── Step 5: RUNNING ─────────────────────────────────────────────────
         deployment.status     = DeploymentStatus.RUNNING
         deployment.started_at = datetime.utcnow()
         db.commit()
@@ -161,6 +177,25 @@ def terminate_challenge_bg(challenge_id: int) -> None:
                 )
             except Exception as e:
                 logger.warning(f"[terminate_bg] post_challenge playbook failed (non-fatal): {e}")
+
+        # ── Step 2b: Remove port forwarding ───────────────────────────────
+        if deployment.vm_id and deployment.vm_ip:
+            try:
+                ssh_port = settings.SSH_PORT_BASE + deployment.vm_id
+                http_port = settings.HTTP_PORT_BASE + deployment.vm_id
+                ansible_service.run_playbook(
+                    playbook="remove_port_forward.yml",
+                    hosts=settings.PROXMOX_HOST,
+                    extra_vars={
+                        "vm_ip":     deployment.vm_ip,
+                        "ssh_port":  ssh_port,
+                        "http_port": http_port,
+                        "pve_public_ip": settings.PVE_PUBLIC_IP,
+                    },
+                )
+                logger.info(f"[terminate_bg] Port forwarding removed for VM {deployment.vm_id}")
+            except Exception as e:
+                logger.warning(f"[terminate_bg] remove_port_forward failed (non-fatal): {e}")
 
         # ── Step 3: Stop VM ─────────────────────────────────────────────────
         if deployment.vm_id:

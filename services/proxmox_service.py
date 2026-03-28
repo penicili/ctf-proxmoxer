@@ -127,16 +127,20 @@ class ProxmoxService:
             logger.debug(f"Cloning template VMID {template_vmid} to VMID {vmid} on node {target_node} storage {storage}...")
             proxmox.nodes(self.node).qemu(template_vmid).clone.post(**clone_opts)
 
-            # Optional: apply overrides setelah clone (memory, cores, net)
+            # Apply overrides setelah clone (memory, cores, net, cloud-init)
             memory = config.get('memory', self.settings.DEFAULT_VM_MEMORY)
             cores = config.get('cores', self.settings.DEFAULT_VM_CORES)
-            net0 = config.get('net0', 'virtio,bridge=vmbr0')
+
+            # Cloud-init: static IP berdasarkan VMID (e.g. VMID 201 → 10.10.10.201)
+            vm_ip = f"{self.settings.VM_SUBNET}.{vmid}"
+            ipconfig0 = f"ip={vm_ip}/{self.settings.VM_NETMASK},gw={self.settings.VM_GATEWAY}"
 
             try:
                 proxmox.nodes(target_node).qemu(vmid).config.post(
                     memory=memory,
                     cores=cores,
-                    net0=net0
+                    net0=f"virtio,bridge={self.settings.MANAGEMENT_BRIDGE}",
+                    ipconfig0=ipconfig0,
                 )
             except Exception as e:
                 logger.warning(f"Gagal apply config ke VM {vmid}: {e}")

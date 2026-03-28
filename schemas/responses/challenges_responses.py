@@ -25,6 +25,10 @@ class ChallengeResponse(BaseModel):
     vm_ip: Optional[str] = None
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
+
+    # Access info (NAT port forwarding)
+    access_ssh: Optional[str] = None   # e.g. "ssh user@192.168.1.102 -p 22201"
+    access_http: Optional[str] = None  # e.g. "http://192.168.1.102:80201"
     
     model_config = ConfigDict(from_attributes=True)
 

@@ -23,6 +23,16 @@ router = APIRouter(
 def _build_response(challenge: Challenge) -> ChallengeResponse:
     """Susun ChallengeResponse dari Challenge + relasi Deployment + Level."""
     dep: Optional[Deployment] = challenge.deployment
+
+    # Build access info jika VM sudah running
+    access_ssh = None
+    access_http = None
+    if dep and dep.vm_id and dep.status == DeploymentStatus.RUNNING:
+        ssh_port = settings.SSH_PORT_BASE + dep.vm_id
+        http_port = settings.HTTP_PORT_BASE + dep.vm_id
+        access_ssh = f"ssh user@{settings.PVE_PUBLIC_IP} -p {ssh_port}"
+        access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
+
     return ChallengeResponse(
         id=challenge.id,
         level_id=challenge.level_id,
@@ -40,6 +50,8 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         vm_ip=dep.vm_ip if dep else None,
         error_message=dep.error_message if dep else None,
         started_at=dep.started_at if dep else None,
+        access_ssh=access_ssh,
+        access_http=access_http,
     )
 
 
