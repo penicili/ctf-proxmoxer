@@ -99,6 +99,11 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         db.commit()
         logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}, ip={deployment.vm_ip}")
 
+        # ── Wait for VM to boot + cloud-init network ─────────────────────
+        import time
+        logger.info("[deploy_bg] Waiting 30s for VM boot + cloud-init...")
+        time.sleep(30)
+
         # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
         ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
         http_port = settings.HTTP_PORT_BASE + vm_result.vmid
@@ -116,11 +121,10 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
-        # ── Step 4: Setup challenge di VM via Ansible (SSH lewat port forwarding)
+        # ── Step 4: Setup challenge di VM via Ansible (SSH via ProxyJump lewat PVE)
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
-            hosts=settings.PVE_PUBLIC_IP,
-            port_override=ssh_port,
+            hosts=deployment.vm_ip,
             extra_vars={
                 "challenge_id": challenge.id,
                 "level_id":     challenge.level_id,
@@ -175,11 +179,9 @@ def terminate_challenge_bg(challenge_id: int) -> None:
         # ── Step 2: (Opsional) Cleanup playbook ─────────────────────────────
         if deployment.vm_id and deployment.vm_ip:
             try:
-                vm_ssh_port = settings.SSH_PORT_BASE + deployment.vm_id
                 ansible_service.run_playbook(
                     playbook="post_challenge.yml",
-                    hosts=settings.PVE_PUBLIC_IP,
-                    port_override=vm_ssh_port,
+                    hosts=deployment.vm_ip,
                     extra_vars={
                         "vmid":  deployment.vm_id,
                         "team":  challenge.team,

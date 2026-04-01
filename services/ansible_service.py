@@ -50,22 +50,23 @@ class AnsibleService:
         if hosts == "localhost":
             return "localhost ansible_connection=local,"
 
-        user = self.settings.SSH_USERNAME
         port = port_override or self.settings.SSH_PORT
+        key_path = self.settings.SSH_KEY_PATH
 
         if is_pve:
-            # PVE: pakai SSH key (no password)
-            key_path = self.settings.SSH_KEY_PATH
+            # PVE: pakai SSH key sebagai root
+            user = self.settings.SSH_USERNAME
             return (
                 f"[all]\n"
                 f"{hosts} ansible_user={user} ansible_port={port} ansible_ssh_private_key_file={key_path}\n"
             )
         else:
-            # VM: pakai password, via port forwarding di PVE host
-            password = self.settings.SSH_PASSWORD
+            # VM: pakai SSH key (inject via cloud-init), SSH via ProxyJump lewat PVE host
+            user = self.settings.VM_SSH_USERNAME
             return (
                 f"[all]\n"
-                f"{hosts} ansible_user={user} ansible_password={password} ansible_port={port}\n"
+                f"{hosts} ansible_user={user} ansible_port={port}"
+                f" ansible_ssh_private_key_file={key_path}\n"
             )
 
     def run_playbook(self, playbook: str, hosts: str = "localhost", extra_vars: dict = None, is_pve: bool = False, port_override: int = None):
@@ -96,10 +97,22 @@ class AnsibleService:
         logger.debug(f"Inventory: {inventory}")
         logger.debug(f"Extra vars keys: {list(extravars.keys())}")
 
+        # Build envvars — untuk VM, set ANSIBLE_SSH_ARGS agar ProxyJump jalan
+        envvars = {}
+        if hosts != "localhost" and not is_pve:
+            key_path = self.settings.SSH_KEY_PATH
+            pve_user = self.settings.SSH_USERNAME
+            pve_host = self.settings.PROXMOX_HOST
+            envvars["ANSIBLE_SSH_ARGS"] = (
+                f"-o ProxyCommand='ssh -i {key_path} -o StrictHostKeyChecking=no -W %h:%p {pve_user}@{pve_host}' "
+                f"-o StrictHostKeyChecking=no"
+            )
+
         r = ansible_runner.run(
             playbook=playbook_path,
             inventory=inventory,
             extravars=extravars,
+            envvars=envvars,
         )
 
         # Log output

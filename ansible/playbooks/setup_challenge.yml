@@ -1,12 +1,17 @@
 ---
+# setup_challenge.yml
+# Setup challenge di VM — untuk saat ini hanya test koneksi
+# TODO: tambah logika clone repo + flag injection
+
 - name: Setup challenge VM
   hosts: all
   become: true
   gather_facts: true
 
   tasks:
-    - name: Clone challenge repository
-      ansible.builtin.git:
-        repo: "{{ challenge_repo_url }}"
-        dest: /opt/challenge
-        version: master
+    - name: Verify VM connectivity
+      ansible.builtin.ping:
+
+    - name: Show VM info
+      ansible.builtin.debug:
+        msg: "VM ready — challenge_id={{ challenge_id }}, team={{ team }}, vmid={{ vmid }}"

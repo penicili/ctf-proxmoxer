@@ -37,12 +37,14 @@ class Settings(BaseSettings):
     PROXMOX_NODE: str = "pve"
     PROXMOX_VERIFY_SSL: bool = False
     
-    # SSH
+    # SSH — PVE host
     SSH_USERNAME: str = "root"
-    SSH_PASSWORD: str = "ctfadmin"
     SSH_KEY_PATH: str = "~/.ssh/id_rsa"
     SSH_PORT: int = 22
     SSH_TIMEOUT: int = 30
+
+    # SSH — VM (cloud-init user)
+    VM_SSH_USERNAME: str = "user"
     
     # Challenge defaults
     DEFAULT_VM_MEMORY: int = 512
