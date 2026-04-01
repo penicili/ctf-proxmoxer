@@ -40,6 +40,7 @@ class Settings(BaseSettings):
     # SSH
     SSH_USERNAME: str = "root"
     SSH_PASSWORD: str = "ctfadmin"
+    SSH_KEY_PATH: str = "~/.ssh/id_rsa"
     SSH_PORT: int = 22
     SSH_TIMEOUT: int = 30
     
@@ -70,7 +71,7 @@ class Settings(BaseSettings):
     # Network — NAT port forwarding
     PVE_PUBLIC_IP: str = "192.168.1.102"
     SSH_PORT_BASE: int = 22000
-    HTTP_PORT_BASE: int = 80000
+    HTTP_PORT_BASE: int = 8000
     
     # Logging
     LOG_LEVEL: str = "INFO"

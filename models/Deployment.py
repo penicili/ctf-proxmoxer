@@ -33,8 +33,8 @@ class Deployment(Base):
     challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id", ondelete="CASCADE"), unique=True, index=True)
     
     # VM Details
-    vm_id: Mapped[Optional[int]] = mapped_column(unique=True, index=True)  # Proxmox VMID
-    vm_name: Mapped[Optional[str]] = mapped_column(String(100), unique=True, nullable=True)  # Unique VM name
+    vm_id: Mapped[Optional[int]] = mapped_column(index=True, nullable=True)  # Proxmox VMID (bisa recycle setelah terminate)
+    vm_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # VM name
     vm_ip: Mapped[Optional[str]] = mapped_column(String(45), nullable=True)  # IPv4 atau IPv6
         
     # Status & Lifecycle

@@ -38,34 +38,45 @@ class AnsibleService:
         )
         self.vars_file.write_text(vars_content)
 
-    def _build_inventory(self, hosts: str) -> str:
+    def _build_inventory(self, hosts: str, is_pve: bool = False, port_override: int = None) -> str:
         """
         Build inventory string untuk ansible_runner.
 
-        - "localhost" → localhost ansible_connection=local
-        - IP lain    → IP dengan SSH credentials dari Settings
+        - "localhost"        → ansible_connection=local (untuk modul API)
+        - IP + is_pve=True   → SSH ke PVE host (pakai SSH key, tanpa password)
+        - IP + is_pve=False  → SSH ke VM (pakai SSH_PASSWORD)
+        - port_override      → override SSH port (untuk VM via port forwarding)
         """
         if hosts == "localhost":
             return "localhost ansible_connection=local,"
 
         user = self.settings.SSH_USERNAME
-        password = self.settings.SSH_PASSWORD
-        port = self.settings.SSH_PORT
-        return (
-            f"{hosts}"
-            f" ansible_user={user}"
-            f" ansible_password={password}"
-            f" ansible_port={port}"
-            f" ansible_ssh_common_args='-o StrictHostKeyChecking=no',"
-        )
+        port = port_override or self.settings.SSH_PORT
 
-    def run_playbook(self, playbook: str, hosts: str = "localhost", extra_vars: dict = None):
+        if is_pve:
+            # PVE: pakai SSH key (no password)
+            key_path = self.settings.SSH_KEY_PATH
+            return (
+                f"[all]\n"
+                f"{hosts} ansible_user={user} ansible_port={port} ansible_ssh_private_key_file={key_path}\n"
+            )
+        else:
+            # VM: pakai password, via port forwarding di PVE host
+            password = self.settings.SSH_PASSWORD
+            return (
+                f"[all]\n"
+                f"{hosts} ansible_user={user} ansible_password={password} ansible_port={port}\n"
+            )
+
+    def run_playbook(self, playbook: str, hosts: str = "localhost", extra_vars: dict = None, is_pve: bool = False, port_override: int = None):
         """
         Run ansible playbook.
 
         :param playbook: nama file playbook (e.g. "setup_challenge.yml")
         :param hosts: target host — "localhost" untuk API-based modules, atau IP untuk SSH
         :param extra_vars: variabel tambahan yang dikirim ke playbook
+        :param is_pve: True jika target adalah PVE host (pakai PROXMOX_PASSWORD), False untuk VM (pakai SSH_PASSWORD)
+        :param port_override: override SSH port (e.g. untuk VM via port forwarding)
         :raises AnsiblePlaybookError: jika playbook gagal (status != "successful")
         """
         extravars = extra_vars or {}
@@ -78,7 +89,7 @@ class AnsibleService:
                 if file_vars:
                     extravars.update(file_vars)
 
-        inventory = self._build_inventory(hosts)
+        inventory = self._build_inventory(hosts, is_pve=is_pve, port_override=port_override)
         playbook_path = str(self.playbook_dir / playbook)
 
         logger.info(f"Running playbook '{playbook}' on '{hosts}'")

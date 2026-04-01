@@ -106,6 +106,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         ansible_service.run_playbook(
             playbook="setup_port_forward.yml",
             hosts=settings.PROXMOX_HOST,
+            is_pve=True,
             extra_vars={
                 "vm_ip":     deployment.vm_ip,
                 "ssh_port":  ssh_port,
@@ -115,10 +116,11 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
-        # ── Step 4: Setup challenge di VM via Ansible ───────────────────────
+        # ── Step 4: Setup challenge di VM via Ansible (SSH lewat port forwarding)
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
-            hosts=deployment.vm_ip,
+            hosts=settings.PVE_PUBLIC_IP,
+            port_override=ssh_port,
             extra_vars={
                 "challenge_id": challenge.id,
                 "level_id":     challenge.level_id,
@@ -171,11 +173,13 @@ def terminate_challenge_bg(challenge_id: int) -> None:
         logger.info(f"[terminate_bg] Terminating challenge {challenge_id}")
 
         # ── Step 2: (Opsional) Cleanup playbook ─────────────────────────────
-        if deployment.vm_ip:
+        if deployment.vm_id and deployment.vm_ip:
             try:
+                vm_ssh_port = settings.SSH_PORT_BASE + deployment.vm_id
                 ansible_service.run_playbook(
                     playbook="post_challenge.yml",
-                    hosts=deployment.vm_ip,
+                    hosts=settings.PVE_PUBLIC_IP,
+                    port_override=vm_ssh_port,
                     extra_vars={
                         "vmid":  deployment.vm_id,
                         "team":  challenge.team,
@@ -192,6 +196,7 @@ def terminate_challenge_bg(challenge_id: int) -> None:
                 ansible_service.run_playbook(
                     playbook="remove_port_forward.yml",
                     hosts=settings.PROXMOX_HOST,
+                    is_pve=True,
                     extra_vars={
                         "vm_ip":     deployment.vm_ip,
                         "ssh_port":  ssh_port,

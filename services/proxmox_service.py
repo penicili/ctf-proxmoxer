@@ -3,6 +3,7 @@ Proxmox Service
 Mengelola koneksi dan operasi dengan Proxmox VE
 """
 
+import time
 from proxmoxer import ProxmoxAPI
 from typing import Optional, List, Dict, Any
 from config.settings import Settings
@@ -114,18 +115,24 @@ class ProxmoxService:
             target_node = config.get('target_node', self.node)
 
             # Opsi clone
+            is_full_clone = int(config.get('full', 0))
             clone_opts = {
                 'newid': vmid,
                 'name': vm_name,
                 'target': target_node,
-                'storage': storage,
-                # full=1 untuk full clone (copy disk), 0 untuk linked clone (butuh template template di storage yang sama)
-                'full': int(config.get('full', 1)),
+                'full': is_full_clone,
             }
+            # storage hanya boleh untuk full clone
+            if is_full_clone:
+                clone_opts['storage'] = storage
 
-            # Lakukan clone dari template
+            # Lakukan clone dari template (async task di Proxmox)
             logger.debug(f"Cloning template VMID {template_vmid} to VMID {vmid} on node {target_node} storage {storage}...")
-            proxmox.nodes(self.node).qemu(template_vmid).clone.post(**clone_opts)
+            upid = proxmox.nodes(self.node).qemu(template_vmid).clone.post(**clone_opts)
+
+            # Tunggu clone task selesai
+            self._wait_for_task(proxmox, target_node, upid)
+            logger.info(f"Clone completed: VMID {vmid}")
 
             # Apply overrides setelah clone (memory, cores, net, cloud-init)
             memory = config.get('memory', self.settings.DEFAULT_VM_MEMORY)
@@ -166,6 +173,29 @@ class ProxmoxService:
         except Exception as e:
             logger.exception("Failed to clone VM")
             raise VMCreationError(str(e))
+
+    def _wait_for_task(self, proxmox: ProxmoxAPI, node: str, upid: str, timeout: int = 300, interval: int = 3) -> None:
+        """
+        Tunggu Proxmox task selesai (polling status).
+
+        :param upid: UPID task dari Proxmox
+        :param timeout: max waktu tunggu (detik)
+        :param interval: interval polling (detik)
+        :raises VMCreationError: jika task gagal atau timeout
+        """
+        elapsed = 0
+        while elapsed < timeout:
+            task_status = proxmox.nodes(node).tasks(upid).status.get()
+            status = task_status.get("status", "")
+            if status == "stopped":
+                exit_status = task_status.get("exitstatus", "")
+                if exit_status == "OK":
+                    return
+                raise VMCreationError(f"Proxmox task failed: {exit_status}")
+            time.sleep(interval)
+            elapsed += interval
+            logger.debug(f"Waiting for task {upid}... ({elapsed}s)")
+        raise VMCreationError(f"Proxmox task timeout after {timeout}s: {upid}")
 
     def _get_next_vmid(self) -> int:
         """Calculate next available VMID"""
