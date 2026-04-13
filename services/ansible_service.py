@@ -94,8 +94,8 @@ class AnsibleService:
         playbook_path = str(self.playbook_dir / playbook)
 
         logger.info(f"Running playbook '{playbook}' on '{hosts}'")
-        logger.debug(f"Inventory: {inventory}")
-        logger.debug(f"Extra vars keys: {list(extravars.keys())}")
+        logger.info(f"Inventory: {inventory}")
+        logger.info(f"Extra vars keys: {list(extravars.keys())}")
 
         # Build envvars — untuk VM, set ANSIBLE_SSH_ARGS agar ProxyJump jalan
         envvars = {}
@@ -108,11 +108,14 @@ class AnsibleService:
                 f"-o StrictHostKeyChecking=no"
             )
 
+        logger.info(f"ANSIBLE_SSH_ARGS: {envvars.get('ANSIBLE_SSH_ARGS', 'not set')}")
+
         r = ansible_runner.run(
             playbook=playbook_path,
             inventory=inventory,
             extravars=extravars,
             envvars=envvars,
+            verbosity=3,
         )
 
         # Log output — kalau gagal, log di INFO agar terlihat di log file
