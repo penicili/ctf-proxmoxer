@@ -1,17 +1,49 @@
 ---
 # setup_challenge.yml
-# Setup challenge di VM — untuk saat ini hanya test koneksi
-# TODO: tambah logika clone repo + flag injection
+# Jalankan container challenge yang image-nya sudah di-build saat prepare template.
+# Hanya docker run + inject FLAG via environment variable.
+#
+# Required extra_vars:
+#   challenge_id:  int
+#   flag:          str
+#   team:          str
+#   vmid:          int
 
-- name: Setup challenge VM
+- name: Setup CTF challenge on VM
   hosts: all
   become: true
-  gather_facts: true
+  gather_facts: false
+
+  vars:
+    image_name:     "ctf-challenge"
+    container_name: "ctf-{{ challenge_id }}"
+    host_port:      80
+    container_port: 5000
 
   tasks:
-    - name: Verify VM connectivity
-      ansible.builtin.ping:
+    - name: Remove existing container (safety)
+      ansible.builtin.command:
+        cmd: "docker rm -f {{ container_name }}"
+      failed_when: false
+      changed_when: false
 
-    - name: Show VM info
+    - name: Run challenge container with injected flag
+      ansible.builtin.command:
+        cmd: >-
+          docker run -d
+          --name {{ container_name }}
+          --restart unless-stopped
+          -e FLAG={{ flag | quote }}
+          -p {{ host_port }}:{{ container_port }}
+          {{ image_name }}
+
+    - name: Wait for container to listen on port {{ host_port }}
+      ansible.builtin.wait_for:
+        host:    127.0.0.1
+        port:    "{{ host_port }}"
+        delay:   2
+        timeout: 30
+
+    - name: Show challenge info
       ansible.builtin.debug:
-        msg: "VM ready — challenge_id={{ challenge_id }}, team={{ team }}, vmid={{ vmid }}"
+        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, port={{ host_port }}"

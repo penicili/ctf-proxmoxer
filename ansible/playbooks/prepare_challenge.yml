@@ -1,0 +1,44 @@
+---
+# prepare_challenge.yml
+# Siapkan challenge di VM: clone repo + build Docker image.
+# Dijalankan saat "prepare template" untuk level tertentu.
+# Setelah playbook ini selesai, VM akan di-shutdown dan di-convert ke template.
+#
+# Required extra_vars:
+#   source_url: str (git repo URL)
+
+- name: Prepare challenge in VM
+  hosts: all
+  become: true
+  gather_facts: false
+
+  vars:
+    challenge_dir:  "/opt/challenge"
+    image_name:     "ctf-challenge"
+
+  tasks:
+    - name: Ensure challenge directory is clean
+      ansible.builtin.file:
+        path: "{{ challenge_dir }}"
+        state: absent
+
+    - name: Clone challenge source
+      ansible.builtin.git:
+        repo:  "{{ source_url }}"
+        dest:  "{{ challenge_dir }}"
+        depth: 1
+        force: yes
+
+    - name: Build Docker image
+      ansible.builtin.command:
+        cmd:   "docker build -t {{ image_name }} ."
+        chdir: "{{ challenge_dir }}"
+
+    - name: Verify image exists
+      ansible.builtin.command:
+        cmd: "docker images {{ image_name }} --format '{{ '{{' }}.Repository{{ '}}' }}:{{ '{{' }}.Tag{{ '}}' }}'"
+      register: image_check
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "Image ready: {{ image_check.stdout }}"

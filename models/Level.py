@@ -46,6 +46,7 @@ class Level(Base):
     
     # Template VM/Container Config
     template_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # template url (dummy)
+    source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # git repo url untuk challenge source
     
     # Status
     is_active: Mapped[bool] = mapped_column(default=True, index=True)

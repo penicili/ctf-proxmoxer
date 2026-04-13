@@ -121,13 +121,12 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
-        # ── Step 4: Setup challenge di VM via Ansible (SSH via ProxyJump lewat PVE)
+        # ── Step 4: Setup challenge di VM via Ansible (docker run saja, image sudah ada di template)
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
             hosts=deployment.vm_ip,
             extra_vars={
                 "challenge_id": challenge.id,
-                "level_id":     challenge.level_id,
                 "team":         challenge.team,
                 "flag":         challenge.flag,
                 "vmid":         vm_result.vmid,
@@ -230,6 +229,87 @@ def terminate_challenge_bg(challenge_id: int) -> None:
     except Exception as e:
         logger.exception(f"[terminate_bg] Unexpected error for challenge {challenge_id}: {e}")
         _mark_error(db, challenge_id, f"Termination failed: {e}")
+    finally:
+        db.close()
+
+
+def prepare_level_template_bg(level_id: int) -> None:
+    """
+    Background task: clone base template → install challenge → convert ke template.
+    Setelah selesai, level.template_url akan di-update ke VMID template baru.
+    """
+    db: Session = SessionLocal()
+    new_vmid = None
+    try:
+        from config.settings import settings
+        proxmox_service = ProxmoxService(settings)
+        ansible_service = AnsibleService(settings)
+
+        level: Optional[Level] = db.query(Level).filter(Level.id == level_id).first()
+        if not level:
+            logger.error(f"[prepare_tpl] Level {level_id} not found")
+            return
+
+        if not level.source_url:
+            logger.error(f"[prepare_tpl] Level {level_id} has no source_url")
+            return
+
+        logger.info(f"[prepare_tpl] Preparing template for level '{level.name}' (source: {level.source_url})")
+
+        # ── Step 1: Clone base template ──────────────────────────────────────
+        vm_config = {
+            "template_vmid": settings.TEMPLATE_VMID,
+        }
+        vm_result = proxmox_service.create_vm(
+            level_id=level_id,
+            team="template",
+            time_limit=0,
+            config=vm_config,
+        )
+        new_vmid = vm_result.vmid
+        vm_ip = f"{settings.VM_SUBNET}.{new_vmid}"
+        logger.info(f"[prepare_tpl] VM cloned: vmid={new_vmid}, ip={vm_ip}")
+
+        # ── Step 2: Wait for boot ────────────────────────────────────────────
+        import time
+        logger.info("[prepare_tpl] Waiting 30s for VM boot + cloud-init...")
+        time.sleep(30)
+
+        # ── Step 3: Run prepare_challenge.yml (git clone + docker build) ─────
+        ansible_service.run_playbook(
+            playbook="prepare_challenge.yml",
+            hosts=vm_ip,
+            extra_vars={
+                "source_url": level.source_url,
+            },
+        )
+        logger.info(f"[prepare_tpl] Challenge installed in VM {new_vmid}")
+
+        # ── Step 4: Shutdown VM ──────────────────────────────────────────────
+        proxmox_service.shutdown_vm(new_vmid)
+        logger.info(f"[prepare_tpl] VM {new_vmid} stopped")
+
+        # ── Step 5: Convert to template ──────────────────────────────────────
+        proxmox_service.convert_to_template(new_vmid)
+        logger.info(f"[prepare_tpl] VM {new_vmid} converted to template")
+
+        # ── Step 6: Update level.template_url ────────────────────────────────
+        level.template_url = str(new_vmid)
+        db.commit()
+        logger.info(f"[prepare_tpl] Level '{level.name}' template_url updated to {new_vmid}")
+
+    except Exception as e:
+        logger.exception(f"[prepare_tpl] Failed to prepare template for level {level_id}: {e}")
+        # Cleanup: destroy VM jika sudah dibuat tapi gagal
+        if new_vmid:
+            try:
+                from config.settings import settings
+                proxmox_service = ProxmoxService(settings)
+                proxmox_service.stop_vm(new_vmid)
+                proxmox_service.destroy_vm(new_vmid)
+                logger.info(f"[prepare_tpl] Cleaned up VM {new_vmid}")
+            except Exception:
+                pass
     finally:
         db.close()
 

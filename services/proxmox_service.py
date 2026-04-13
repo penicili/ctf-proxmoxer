@@ -235,6 +235,57 @@ class ProxmoxService:
             logger.error(f"Failed to stop VM {vmid}: {e}")
             raise ProxmoxNodeError(f"Failed to stop VM {vmid}: {e}")
 
+    def shutdown_vm(self, vmid: int, timeout: int = 120) -> None:
+        """
+        Graceful shutdown VM lalu tunggu sampai benar-benar stopped.
+        """
+        try:
+            proxmox = self._ensure_connected()
+            proxmox.nodes(self.node).qemu(vmid).status.shutdown.post()
+            logger.info(f"Shutdown signal sent to VM {vmid}, waiting...")
+
+            elapsed = 0
+            while elapsed < timeout:
+                status = proxmox.nodes(self.node).qemu(vmid).status.current.get()
+                if status.get("status") == "stopped":
+                    logger.info(f"VM {vmid} stopped after {elapsed}s")
+                    return
+                time.sleep(3)
+                elapsed += 3
+
+            # Kalau belum mati juga, force stop
+            logger.warning(f"VM {vmid} did not stop after {timeout}s, forcing stop")
+            proxmox.nodes(self.node).qemu(vmid).status.stop.post()
+            time.sleep(5)
+        except Exception as e:
+            logger.error(f"Failed to shutdown VM {vmid}: {e}")
+            raise ProxmoxNodeError(f"Failed to shutdown VM {vmid}: {e}")
+
+    def convert_to_template(self, vmid: int) -> None:
+        """
+        Convert VM ke template.
+        VM harus dalam keadaan stopped.
+        """
+        try:
+            proxmox = self._ensure_connected()
+            proxmox.nodes(self.node).qemu(vmid).template.post()
+            logger.info(f"VM {vmid} converted to template")
+        except Exception as e:
+            logger.error(f"Failed to convert VM {vmid} to template: {e}")
+            raise ProxmoxNodeError(f"Failed to convert VM {vmid} to template: {e}")
+
+    def destroy_vm(self, vmid: int) -> None:
+        """
+        Destroy (hapus) VM beserta disk-nya.
+        """
+        try:
+            proxmox = self._ensure_connected()
+            proxmox.nodes(self.node).qemu(vmid).delete(purge=1)
+            logger.info(f"VM {vmid} destroyed")
+        except Exception as e:
+            logger.error(f"Failed to destroy VM {vmid}: {e}")
+            raise ProxmoxNodeError(f"Failed to destroy VM {vmid}: {e}")
+
     def get_vm_info(self, vmid: int) -> Dict[str, Any]:
         """
         Get detailed info of a VM/Container by VMID
