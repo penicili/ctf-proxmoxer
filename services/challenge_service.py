@@ -256,9 +256,12 @@ def prepare_level_template_bg(level_id: int) -> None:
 
         logger.info(f"[prepare_tpl] Preparing template for level '{level.name}' (source: {level.source_url})")
 
-        # ── Step 1: Clone base template ──────────────────────────────────────
+        # ── Step 1: Clone base template (spec tinggi untuk build) ────────────
         vm_config = {
             "template_vmid": settings.TEMPLATE_VMID,
+            "memory": 2048,
+            "cores": 2,
+            "cpu_type": "host",
         }
         vm_result = proxmox_service.create_vm(
             level_id=level_id,
@@ -305,7 +308,7 @@ def prepare_level_template_bg(level_id: int) -> None:
             try:
                 from config.settings import settings
                 proxmox_service = ProxmoxService(settings)
-                proxmox_service.stop_vm(new_vmid)
+                proxmox_service.shutdown_vm(new_vmid)
                 proxmox_service.destroy_vm(new_vmid)
                 logger.info(f"[prepare_tpl] Cleaned up VM {new_vmid}")
             except Exception:

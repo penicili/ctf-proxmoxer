@@ -12,6 +12,9 @@
   become: true
   gather_facts: false
 
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
+
   vars:
     challenge_dir:  "/opt/challenge"
     image_name:     "ctf-challenge"

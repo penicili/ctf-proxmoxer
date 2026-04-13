@@ -115,19 +115,20 @@ class AnsibleService:
             envvars=envvars,
         )
 
-        # Log output
-        if r.stdout:
-            for line in r.stdout:
-                logger.debug(f"[ansible] {line}")
-
-        # Check result
+        # Log output — kalau gagal, log di INFO agar terlihat di log file
         if r.status != "successful":
+            if r.stdout:
+                for line in r.stdout:
+                    logger.info(f"[ansible] {line}")
             error_msg = f"Playbook '{playbook}' failed: status={r.status}, rc={r.rc}"
-            # Coba ambil stderr/error events untuk detail
             if r.stats:
                 error_msg += f", stats={r.stats}"
             logger.error(error_msg)
             raise AnsiblePlaybookError(error_msg)
+        else:
+            if r.stdout:
+                for line in r.stdout:
+                    logger.debug(f"[ansible] {line}")
 
         logger.info(f"Playbook '{playbook}' completed successfully")
         return r

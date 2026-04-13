@@ -134,21 +134,26 @@ class ProxmoxService:
             self._wait_for_task(proxmox, target_node, upid)
             logger.info(f"Clone completed: VMID {vmid}")
 
-            # Apply overrides setelah clone (memory, cores, net, cloud-init)
+            # Apply overrides setelah clone
             memory = config.get('memory', self.settings.DEFAULT_VM_MEMORY)
             cores = config.get('cores', self.settings.DEFAULT_VM_CORES)
+            cpu_type = config.get('cpu_type')
 
             # Cloud-init: static IP berdasarkan VMID (e.g. VMID 201 → 10.10.10.201)
             vm_ip = f"{self.settings.VM_SUBNET}.{vmid}"
             ipconfig0 = f"ip={vm_ip}/{self.settings.VM_NETMASK},gw={self.settings.VM_GATEWAY}"
 
+            vm_config_opts = {
+                "memory": memory,
+                "cores": cores,
+                "ipconfig0": ipconfig0,
+            }
+
+            if cpu_type:
+                vm_config_opts["cpu"] = cpu_type
+
             try:
-                proxmox.nodes(target_node).qemu(vmid).config.post(
-                    memory=memory,
-                    cores=cores,
-                    net0=f"virtio,bridge={self.settings.MANAGEMENT_BRIDGE}",
-                    ipconfig0=ipconfig0,
-                )
+                proxmox.nodes(target_node).qemu(vmid).config.post(**vm_config_opts)
             except Exception as e:
                 logger.warning(f"Gagal apply config ke VM {vmid}: {e}")
 
