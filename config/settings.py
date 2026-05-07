@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     SSH_PORT_BASE: int = 22000
     HTTP_PORT_BASE: int = 8000
     
+    # CTFd API
+    CTFD_URL: str = "http://localhost:4000"
+    CTFD_API_TOKEN: str = ""
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "ctf_platform.log"

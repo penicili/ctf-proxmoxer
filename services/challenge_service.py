@@ -1,4 +1,5 @@
 import secrets
+import requests
 from datetime import datetime
 from typing import Optional
 
@@ -10,6 +11,7 @@ from core.exceptions import VMCreationError, ResourceNotFoundError, AnsiblePlayb
 from config.settings import Settings
 from models import Challenge, Deployment, Level
 from models.Deployment import DeploymentStatus
+from models.Level import PrepareStatusEnum
 from services.proxmox_service import ProxmoxService
 from services.ansible_service import AnsibleService
 
@@ -140,6 +142,14 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         db.commit()
         logger.info(f"[deploy_bg] Challenge {challenge_id} is now RUNNING")
 
+        # ── Step 6: Buat challenge + flag di CTFd via API ───────────────
+        access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
+        ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access_http)
+        if ctfd_id:
+            logger.info(f"[deploy_bg] CTFd challenge finalized: ctfd_id={ctfd_id}")
+        else:
+            logger.warning(f"[deploy_bg] CTFd finalize skipped or failed for challenge {challenge_id}")
+
     except (VMCreationError, ResourceNotFoundError, AnsiblePlaybookError) as e:
         logger.error(f"[deploy_bg] Challenge {challenge_id} failed: {e}")
         _mark_error(db, challenge_id, str(e))
@@ -254,6 +264,9 @@ def prepare_level_template_bg(level_id: int) -> None:
             logger.error(f"[prepare_tpl] Level {level_id} has no source_url")
             return
 
+        level.prepare_status = PrepareStatusEnum.PREPARING
+        level.prepare_error = None
+        db.commit()
         logger.info(f"[prepare_tpl] Preparing template for level '{level.name}' (source: {level.source_url})")
 
         # ── Step 1: Clone base template (spec tinggi untuk build) ────────────
@@ -296,13 +309,23 @@ def prepare_level_template_bg(level_id: int) -> None:
         proxmox_service.convert_to_template(new_vmid)
         logger.info(f"[prepare_tpl] VM {new_vmid} converted to template")
 
-        # ── Step 6: Update level.template_url ────────────────────────────────
+        # ── Step 6: Update level ─────────────────────────────────────────────
         level.template_url = str(new_vmid)
+        level.prepare_status = PrepareStatusEnum.READY
+        level.prepare_error = None
         db.commit()
         logger.info(f"[prepare_tpl] Level '{level.name}' template_url updated to {new_vmid}")
 
     except Exception as e:
         logger.exception(f"[prepare_tpl] Failed to prepare template for level {level_id}: {e}")
+        try:
+            level = db.query(Level).filter(Level.id == level_id).first()
+            if level:
+                level.prepare_status = PrepareStatusEnum.ERROR
+                level.prepare_error = str(e)
+                db.commit()
+        except Exception:
+            pass
         # Cleanup: destroy VM jika sudah dibuat tapi gagal
         if new_vmid:
             try:
@@ -315,6 +338,62 @@ def prepare_level_template_bg(level_id: int) -> None:
                 pass
     finally:
         db.close()
+
+
+def _finalize_ctfd_challenge(settings: Settings, challenge: Challenge, level: Level, access_http: Optional[str] = None) -> Optional[int]:
+    """
+    Buat entri challenge + flag di CTFd via REST API.
+    Return ctfd_challenge_id jika berhasil, None jika gagal.
+    """
+    if not settings.CTFD_API_TOKEN:
+        logger.warning("[finalize] CTFD_API_TOKEN not set, skipping CTFd challenge creation")
+        return None
+
+    base_url = settings.CTFD_URL.rstrip("/")
+    headers = {
+        "Authorization": f"Token {settings.CTFD_API_TOKEN}",
+        "Content-Type": "application/json",
+    }
+
+    # Buat description dengan info akses
+    description = level.description or ""
+    if access_http:
+        description += f"\n\n**Challenge URL:** {access_http}"
+
+    # Step 1: Buat challenge di CTFd
+    challenge_payload = {
+        "name": f"{level.name} [{challenge.team}]",
+        "description": description.strip(),
+        "category": level.category,
+        "value": level.points,
+        "type": "standard",
+        "state": "visible",
+    }
+
+    resp = requests.post(f"{base_url}/api/v1/challenges", json=challenge_payload, headers=headers)
+    if not resp.ok:
+        logger.error(f"[finalize] Failed to create CTFd challenge: {resp.status_code} {resp.text}")
+        return None
+
+    ctfd_challenge_id = resp.json()["data"]["id"]
+    logger.info(f"[finalize] CTFd challenge created: id={ctfd_challenge_id}")
+
+    # Step 2: Set flag
+    flag_payload = {
+        "challenge_id": ctfd_challenge_id,
+        "type": "static",
+        "content": challenge.flag,
+        "data": "",
+    }
+
+    resp = requests.post(f"{base_url}/api/v1/flags", json=flag_payload, headers=headers)
+    if not resp.ok:
+        logger.error(f"[finalize] Failed to create CTFd flag: {resp.status_code} {resp.text}")
+        # Challenge sudah dibuat tapi flag gagal — tetap return ID
+        return ctfd_challenge_id
+
+    logger.info(f"[finalize] CTFd flag set for challenge {ctfd_challenge_id}")
+    return ctfd_challenge_id
 
 
 def _mark_error(db: Session, challenge_id: int, message: str) -> None:

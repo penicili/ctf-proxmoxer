@@ -12,6 +12,8 @@ class LevelResponse(BaseModel):
     points: int
     template_url: Optional[str] = None
     source_url: Optional[str] = None
+    prepare_status: str = "none"
+    prepare_error: Optional[str] = None
     is_active: bool
     created_at: datetime
 

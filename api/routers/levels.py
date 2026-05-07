@@ -23,11 +23,16 @@ def list_levels(db: DbSessionDep, is_active: Optional[bool] = None):
 
 
 @router.post("", response_model=LevelResponse, status_code=201)
-def create_level(db: DbSessionDep, request: CreateLevelRequest):
+def create_level(db: DbSessionDep, request: CreateLevelRequest, bg: BackgroundTasks):
     level = Level(**request.model_dump())
     db.add(level)
     db.commit()
     db.refresh(level)
+
+    # Auto-trigger prepare jika source_url ada
+    if level.source_url:
+        bg.add_task(prepare_level_template_bg, level.id)
+
     return level
 
 

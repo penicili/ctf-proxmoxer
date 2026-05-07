@@ -27,6 +27,13 @@ class DifficultyEnum(str, Enum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
+
+class PrepareStatusEnum(str, Enum):
+    """Status prepare template"""
+    NONE = "none"
+    PREPARING = "preparing"
+    READY = "ready"
+    ERROR = "error"
     
 class Level(Base):
     """
@@ -48,6 +55,10 @@ class Level(Base):
     template_url: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # template url (dummy)
     source_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)  # git repo url untuk challenge source
     
+    # Prepare status
+    prepare_status: Mapped[PrepareStatusEnum] = mapped_column(default=PrepareStatusEnum.NONE)
+    prepare_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     # Status
     is_active: Mapped[bool] = mapped_column(default=True, index=True)
     
