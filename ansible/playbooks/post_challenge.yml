@@ -5,36 +5,36 @@
   gather_facts: false
 
   tasks:
-    - name: Read nginx access logs
-      ansible.builtin.slurp:
-        src: /var/log/nginx/access.log
-      register: nginx_access_logs
-      ignore_errors: true
-
-    - name: Read nginx error logs
-      ansible.builtin.slurp:
-        src: /var/log/nginx/error.log
-      register: nginx_error_logs
-      ignore_errors: true
-
-    - name: Send nginx logs to backend
-      ansible.builtin.uri:
-        url: "{{ backend_logging_url }}"
-        method: POST
-        body_format: json
-        body:
-          vmid: "{{ vmid }}"
-          team: "{{ team }}"
-          level_id: "{{ level_id }}"
-          access_logs: "{{ nginx_access_logs.content | default('') }}"
-          error_logs: "{{ nginx_error_logs.content | default('') }}"
-      ignore_errors: true
-
-    - name: Clear nginx access logs
-      ansible.builtin.file:
-        path: /var/log/nginx/access.log
-        state: absent
-      ignore_errors: true
+#    - name: Read nginx access logs
+#      ansible.builtin.slurp:
+#        src: /var/log/nginx/access.log
+#      register: nginx_access_logs
+#      ignore_errors: true
+#
+#    - name: Read nginx error logs
+#      ansible.builtin.slurp:
+#        src: /var/log/nginx/error.log
+#      register: nginx_error_logs
+#      ignore_errors: true
+#
+#    - name: Send nginx logs to backend
+#      ansible.builtin.uri:
+#        url: "{{ backend_logging_url }}"
+#        method: POST
+#        body_format: json
+#        body:
+#          vmid: "{{ vmid }}"
+#          team: "{{ team }}"
+#          level_id: "{{ level_id }}"
+#          access_logs: "{{ nginx_access_logs.content | default('') }}"
+#          error_logs: "{{ nginx_error_logs.content | default('') }}"
+#      ignore_errors: true
+#
+#    - name: Clear nginx access logs
+#      ansible.builtin.file:
+#        path: /var/log/nginx/access.log
+#        state: absent
+#      ignore_errors: true
 
     - name: Clear nginx error logs
       ansible.builtin.file:

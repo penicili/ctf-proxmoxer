@@ -369,7 +369,7 @@ def _finalize_ctfd_challenge(settings: Settings, challenge: Challenge, level: Le
         "type": "standard",
         "state": "visible",
     }
-
+    logger.info(f"[finalize] Getting challenge id  to CTFd")
     resp = requests.post(f"{base_url}/api/v1/challenges", json=challenge_payload, headers=headers)
     if not resp.ok:
         logger.error(f"[finalize] Failed to create CTFd challenge: {resp.status_code} {resp.text}")
@@ -385,7 +385,7 @@ def _finalize_ctfd_challenge(settings: Settings, challenge: Challenge, level: Le
         "content": challenge.flag,
         "data": "",
     }
-
+    logger.info(f"[finalize] Creating CTFd challenge: {ctfd_challenge_id} on {base_url}")
     resp = requests.post(f"{base_url}/api/v1/flags", json=flag_payload, headers=headers)
     if not resp.ok:
         logger.error(f"[finalize] Failed to create CTFd flag: {resp.status_code} {resp.text}")
