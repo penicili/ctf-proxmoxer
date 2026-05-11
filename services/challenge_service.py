@@ -40,8 +40,6 @@ class ChallengeService:
         body = ''.join(secrets.choice(charset) for _ in range(self.settings.FLAG_LENGTH))
         return f"{self.settings.FLAG_PREFIX}{{{body}}}"
 
-    def submit_challenge(self):
-        pass  # TODO: untuk future use jika diperlukan
 
 
 # ── Background Task Functions ────────────────────────────────────────────────

@@ -105,8 +105,6 @@ class ProxmoxService:
             vmid = self._get_next_vmid()
             vm_name = f"{team}-{level_id}-{vmid}"
 
-            # Template dan storage default dari settings (bisa di override via config)
-            # TODO: set vmid template
             template_vmid = int(config.get('template_vmid', getattr(self.settings, 'TEMPLATE_VMID', 0)))
             if not template_vmid:
                 raise VMCreationError("Template VMID tidak ditemukan. Set TEMPLATE_VMID di Settings atau kirim via config.")
