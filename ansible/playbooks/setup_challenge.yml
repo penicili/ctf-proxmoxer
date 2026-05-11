@@ -1,13 +1,15 @@
 ---
 # setup_challenge.yml
-# Jalankan container challenge yang image-nya sudah di-build saat prepare template.
-# Hanya docker run + inject FLAG via environment variable.
+# Pull image dari local registry lalu jalankan container challenge di VM.
+# Dijalankan setelah VM challenge selesai boot.
 #
 # Required extra_vars:
-#   challenge_id:  int
-#   flag:          str
+#   challenge_id:  int  — ID challenge (untuk nama container)
+#   flag:          str  — flag yang di-inject via env var
 #   team:          str
 #   vmid:          int
+#   image_tag:     str  — nama image di registry (e.g. "level-1")
+#   registry_host: str  — host:port registry (e.g. "10.10.10.5:5000")
 
 - name: Setup CTF challenge on VM
   hosts: all
@@ -18,12 +20,16 @@
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
   vars:
-    image_name:     "ctf-challenge"
+    full_image:     "{{ registry_host }}/{{ image_tag }}:latest"
     container_name: "ctf-{{ challenge_id }}"
     host_port:      80
     container_port: 5000
 
   tasks:
+    - name: Pull challenge image from registry
+      ansible.builtin.command:
+        cmd: "docker pull {{ full_image }}"
+
     - name: Remove existing container (safety)
       ansible.builtin.command:
         cmd: "docker rm -f {{ container_name }}"
@@ -38,7 +44,7 @@
           --restart unless-stopped
           -e FLAG={{ flag | quote }}
           -p {{ host_port }}:{{ container_port }}
-          {{ image_name }}
+          {{ full_image }}
 
     - name: Wait for container to listen on port {{ host_port }}
       ansible.builtin.wait_for:
@@ -49,4 +55,4 @@
 
     - name: Show challenge info
       ansible.builtin.debug:
-        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, port={{ host_port }}"
+        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, image={{ full_image }}, port={{ host_port }}"

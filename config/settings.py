@@ -75,6 +75,10 @@ class Settings(BaseSettings):
     SSH_PORT_BASE: int = 22000
     HTTP_PORT_BASE: int = 8000
     
+    # Docker Registry + CI Runner
+    REGISTRY_HOST: str = "10.10.10.5:5000"
+    CI_RUNNER_IP: str = "10.10.10.110"
+
     # CTFd API
     CTFD_URL: str = "http://localhost:4000"
     CTFD_API_TOKEN: str = ""
