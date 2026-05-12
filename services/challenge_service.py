@@ -75,15 +75,10 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}'")
 
         # ── Step 2: Clone VM di Proxmox ─────────────────────────────────────
+        # Selalu clone dari base template — image challenge di-pull dari registry saat setup
         vm_config = {
             "template_vmid": settings.TEMPLATE_VMID,
         }
-        # Level bisa override template VMID (disimpan di template_url sebagai string angka)
-        if level and level.template_url:
-            try:
-                vm_config["template_vmid"] = int(level.template_url)
-            except ValueError:
-                logger.warning(f"[deploy_bg] Level template_url '{level.template_url}' bukan VMID, pakai default")
 
         vm_result = proxmox_service.create_vm(
             level_id=challenge.level_id,
@@ -121,15 +116,18 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
-        # ── Step 4: Setup challenge di VM via Ansible (docker run saja, image sudah ada di template)
+        # ── Step 4: Setup challenge di VM via Ansible (pull dari registry + docker run)
+        image_tag = level.template_url if level and level.template_url else f"level-{challenge.level_id}"
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
             hosts=deployment.vm_ip,
             extra_vars={
-                "challenge_id": challenge.id,
-                "team":         challenge.team,
-                "flag":         challenge.flag,
-                "vmid":         vm_result.vmid,
+                "challenge_id":  challenge.id,
+                "team":          challenge.team,
+                "flag":          challenge.flag,
+                "vmid":          vm_result.vmid,
+                "image_tag":     image_tag,
+                "registry_host": settings.REGISTRY_HOST,
             },
         )
         logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
@@ -243,14 +241,12 @@ def terminate_challenge_bg(challenge_id: int) -> None:
 
 def prepare_level_template_bg(level_id: int) -> None:
     """
-    Background task: clone base template → install challenge → convert ke template.
-    Setelah selesai, level.template_url akan di-update ke VMID template baru.
+    Background task: build Docker image challenge di CI runner, push ke registry.
+    Setelah selesai, level.template_url di-update ke image_tag di registry.
     """
     db: Session = SessionLocal()
-    new_vmid = None
     try:
         from config.settings import settings
-        proxmox_service = ProxmoxService(settings)
         ansible_service = AnsibleService(settings)
 
         level: Optional[Level] = db.query(Level).filter(Level.id == level_id).first()
@@ -265,57 +261,31 @@ def prepare_level_template_bg(level_id: int) -> None:
         level.prepare_status = PrepareStatusEnum.PREPARING
         level.prepare_error = None
         db.commit()
-        logger.info(f"[prepare_tpl] Preparing template for level '{level.name}' (source: {level.source_url})")
 
-        # ── Step 1: Clone base template (spec tinggi untuk build) ────────────
-        vm_config = {
-            "template_vmid": settings.TEMPLATE_VMID,
-            "memory": 2048,
-            "cores": 2,
-            "cpu_type": "host",
-        }
-        vm_result = proxmox_service.create_vm(
-            level_id=level_id,
-            team="template",
-            time_limit=0,
-            config=vm_config,
-        )
-        new_vmid = vm_result.vmid
-        vm_ip = f"{settings.VM_SUBNET}.{new_vmid}"
-        logger.info(f"[prepare_tpl] VM cloned: vmid={new_vmid}, ip={vm_ip}")
+        image_tag = f"level-{level_id}"
+        logger.info(f"[prepare_tpl] Building image '{image_tag}' for level '{level.name}'")
 
-        # ── Step 2: Wait for boot ────────────────────────────────────────────
-        import time
-        logger.info("[prepare_tpl] Waiting 30s for VM boot + cloud-init...")
-        time.sleep(30)
-
-        # ── Step 3: Run prepare_challenge.yml (git clone + docker build) ─────
+        # ── Run prepare_challenge.yml di CI runner ───────────────────────────
         ansible_service.run_playbook(
             playbook="prepare_challenge.yml",
-            hosts=vm_ip,
+            hosts=settings.CI_RUNNER_IP,
             extra_vars={
-                "source_url": level.source_url,
+                "source_url":    level.source_url,
+                "image_tag":     image_tag,
+                "registry_host": settings.REGISTRY_HOST,
             },
         )
-        logger.info(f"[prepare_tpl] Challenge installed in VM {new_vmid}")
+        logger.info(f"[prepare_tpl] Image pushed: {settings.REGISTRY_HOST}/{image_tag}:latest")
 
-        # ── Step 4: Shutdown VM ──────────────────────────────────────────────
-        proxmox_service.shutdown_vm(new_vmid)
-        logger.info(f"[prepare_tpl] VM {new_vmid} stopped")
-
-        # ── Step 5: Convert to template ──────────────────────────────────────
-        proxmox_service.convert_to_template(new_vmid)
-        logger.info(f"[prepare_tpl] VM {new_vmid} converted to template")
-
-        # ── Step 6: Update level ─────────────────────────────────────────────
-        level.template_url = str(new_vmid)
+        # ── Update level ─────────────────────────────────────────────────────
+        level.template_url = image_tag
         level.prepare_status = PrepareStatusEnum.READY
         level.prepare_error = None
         db.commit()
-        logger.info(f"[prepare_tpl] Level '{level.name}' template_url updated to {new_vmid}")
+        logger.info(f"[prepare_tpl] Level '{level.name}' ready, image_tag={image_tag}")
 
     except Exception as e:
-        logger.exception(f"[prepare_tpl] Failed to prepare template for level {level_id}: {e}")
+        logger.exception(f"[prepare_tpl] Failed to prepare level {level_id}: {e}")
         try:
             level = db.query(Level).filter(Level.id == level_id).first()
             if level:
@@ -324,16 +294,6 @@ def prepare_level_template_bg(level_id: int) -> None:
                 db.commit()
         except Exception:
             pass
-        # Cleanup: destroy VM jika sudah dibuat tapi gagal
-        if new_vmid:
-            try:
-                from config.settings import settings
-                proxmox_service = ProxmoxService(settings)
-                proxmox_service.shutdown_vm(new_vmid)
-                proxmox_service.destroy_vm(new_vmid)
-                logger.info(f"[prepare_tpl] Cleaned up VM {new_vmid}")
-            except Exception:
-                pass
     finally:
         db.close()
 

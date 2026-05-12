@@ -1,3 +1,4 @@
+import socket
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -9,6 +10,16 @@ from core.logging import logger
 # Import Routers
 from api.routers import health, playbook, levels, challenges
 
+
+def _ping_host(host: str, port: int = 22, timeout: int = 3) -> bool:
+    """TCP check ke host:port, return True jika reachable."""
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifecycle manager untuk startup dan shutdown"""
@@ -17,6 +28,14 @@ async def lifespan(app: FastAPI):
     logger.info(f"Creating database tables...")
     Base.metadata.create_all(bind=engine)
     logger.success("Database initialized successfully!")
+
+    # health check ke pve, CI runner use DHCP so no check for now
+    pve_ok = _ping_host(settings.PROXMOX_HOST)
+    # ci_ok  = _ping_host(settings.CI_RUNNER_IP)
+    logger.info(f"PVE ({settings.PROXMOX_HOST}): {'reachable' if pve_ok else 'UNREACHABLE'}")
+    # logger.info(f"CI Runner ({settings.CI_RUNNER_IP}): {'reachable' if ci_ok else 'UNREACHABLE'}")
+    if not pve_ok :
+        logger.warning("One or more infrastructure components are unreachable at startup")
     
     yield
     
