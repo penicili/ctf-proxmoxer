@@ -116,7 +116,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         )
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
-        # ── Step 4: Setup challenge di VM via Ansible (pull dari registry + docker run)
+        # ── Step 4: Setup challenge di VM via Ansible (docker compose up)
         image_tag = level.template_url if level and level.template_url else f"level-{challenge.level_id}"
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
@@ -128,6 +128,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
                 "vmid":          vm_result.vmid,
                 "image_tag":     image_tag,
                 "registry_host": settings.REGISTRY_HOST,
+                "source_url":    level.source_url if level else "",
             },
         )
         logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")

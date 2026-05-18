@@ -1,15 +1,15 @@
 ---
 # setup_challenge.yml
-# Pull image dari local registry lalu jalankan container challenge di VM.
-# Dijalankan setelah VM challenge selesai boot.
+# Clone repo untuk mendapatkan docker-compose.yml, tulis .env, lalu docker compose up.
 #
 # Required extra_vars:
-#   challenge_id:  int  — ID challenge (untuk nama container)
-#   flag:          str  — flag yang di-inject via env var
+#   challenge_id:  int
+#   flag:          str
 #   team:          str
 #   vmid:          int
 #   image_tag:     str  — nama image di registry (e.g. "level-1")
 #   registry_host: str  — host:port registry (e.g. "10.10.10.5:5000")
+#   source_url:    str  — git repo URL challenge (untuk docker-compose.yml)
 
 - name: Setup CTF challenge on VM
   hosts: all
@@ -20,39 +20,41 @@
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
   vars:
-    full_image:     "{{ registry_host }}/{{ image_tag }}:latest"
-    container_name: "ctf-{{ challenge_id }}"
-    host_port:      80
-    container_port: 5000
+    challenge_dir: "/opt/challenge/{{ image_tag }}"
 
   tasks:
-    - name: Pull challenge image from registry
-      ansible.builtin.command:
-        cmd: "docker pull {{ full_image }}"
+    - name: Ensure challenge directory is clean
+      ansible.builtin.file:
+        path: "{{ challenge_dir }}"
+        state: absent
 
-    - name: Remove existing container (safety)
-      ansible.builtin.command:
-        cmd: "docker rm -f {{ container_name }}"
-      failed_when: false
-      changed_when: false
+    - name: Clone challenge repo
+      ansible.builtin.git:
+        repo:  "{{ source_url }}"
+        dest:  "{{ challenge_dir }}"
+        depth: 1
+        force: yes
 
-    - name: Run challenge container with injected flag
-      ansible.builtin.command:
-        cmd: >-
-          docker run -d
-          --name {{ container_name }}
-          --restart unless-stopped
-          -e FLAG={{ flag | quote }}
-          -p {{ host_port }}:{{ container_port }}
-          {{ full_image }}
+    - name: Write .env file
+      ansible.builtin.copy:
+        dest: "{{ challenge_dir }}/.env"
+        content: |
+          FLAG={{ flag }}
+          REGISTRY_HOST={{ registry_host }}
+          IMAGE_TAG={{ image_tag }}
 
-    - name: Wait for container to listen on port {{ host_port }}
+    - name: Pull images and start services
+      ansible.builtin.command:
+        cmd:   "docker compose up -d --pull always"
+        chdir: "{{ challenge_dir }}"
+
+    - name: Wait for service on port 80
       ansible.builtin.wait_for:
         host:    127.0.0.1
-        port:    "{{ host_port }}"
+        port:    80
         delay:   2
-        timeout: 30
+        timeout: 60
 
     - name: Show challenge info
       ansible.builtin.debug:
-        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, image={{ full_image }}, port={{ host_port }}"
+        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, image={{ registry_host }}/{{ image_tag }}:latest"

@@ -1,7 +1,7 @@
 ---
 # prepare_challenge.yml
-# Build Docker image challenge di CI runner, lalu push ke local registry.
-# Dijalankan saat admin memilih "Prepare" untuk level tertentu.
+# Build Docker image challenge di CI runner, push ke local registry.
+# Jika ada public-images.txt, mirror image publik ke registry juga.
 #
 # Required extra_vars:
 #   source_url:    str  — git repo URL challenge
@@ -17,8 +17,9 @@
     PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"
 
   vars:
-    challenge_dir: "/opt/challenge-build/{{ image_tag }}"
-    full_image:    "{{ registry_host }}/{{ image_tag }}:latest"
+    challenge_dir:    "/opt/challenge-build/{{ image_tag }}"
+    full_image:       "{{ registry_host }}/{{ image_tag }}:latest"
+    public_images_file: "{{ challenge_dir }}/public-images.txt"
 
   tasks:
     - name: Ensure build directory is clean
@@ -38,9 +39,30 @@
         cmd:   "docker build -t {{ full_image }} ."
         chdir: "{{ challenge_dir }}"
 
-    - name: Push image to registry
+    - name: Push custom image to registry
       ansible.builtin.command:
         cmd: "docker push {{ full_image }}"
+
+    - name: Check if public-images.txt exists
+      ansible.builtin.stat:
+        path: "{{ public_images_file }}"
+      register: public_images_stat
+
+    - name: Read public-images.txt
+      ansible.builtin.slurp:
+        src: "{{ public_images_file }}"
+      register: public_images_content
+      when: public_images_stat.stat.exists
+
+    - name: Mirror public images to registry
+      ansible.builtin.shell: |
+        image="{{ item }}"
+        registry_tag="{{ registry_host }}/{{ item }}"
+        docker pull "$image"
+        docker tag "$image" "$registry_tag"
+        docker push "$registry_tag"
+      loop: "{{ (public_images_content.content | b64decode).strip().split('\n') | select('match', '.+') | list }}"
+      when: public_images_stat.stat.exists
 
     - name: Clean up build directory
       ansible.builtin.file:
