@@ -3,6 +3,6 @@ variables:
   - name: baseUrl
     value: http://localhost:8000
   - name: levelId
-    value: "3"
-  - name: challengeId
     value: "1"
+  - name: challengeId
+    value: "3"

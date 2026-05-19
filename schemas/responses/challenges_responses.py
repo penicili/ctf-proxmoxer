@@ -9,8 +9,6 @@ class ChallengeResponse(BaseModel):
     level_id: int
     team: str
     flag: Optional[str] = None
-    flag_submitted: bool
-    flag_submitted_at: Optional[datetime] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

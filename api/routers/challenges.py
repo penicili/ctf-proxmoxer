@@ -39,8 +39,6 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         level_name=challenge.level.name if challenge.level else None,
         team=challenge.team,
         flag=challenge.flag,
-        flag_submitted=challenge.flag_submitted,
-        flag_submitted_at=challenge.flag_submitted_at,
         is_active=challenge.is_active,
         created_at=challenge.created_at,
         updated_at=challenge.updated_at,
