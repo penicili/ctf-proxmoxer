@@ -1,0 +1,16 @@
+meta {
+  name: List Challenges
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/challenges
+  body: none
+  auth: none
+}
+
+params:query {
+  ~status: running
+  ~team: test-team
+}

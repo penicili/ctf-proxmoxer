@@ -1,0 +1,12 @@
+opencollection: 1.0.0
+info:
+  name: "ctf-proxmoxer"
+  type: workspace
+
+collections:
+  - name: "ctf-proxmoxer"
+    path: "ctf-proxmoxer"
+
+specs:
+
+docs: ''

@@ -1,0 +1,18 @@
+meta {
+  name: Create Challenge (Deploy)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/challenges
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "level_id": {{levelId}},
+    "team_name": "test-team"
+  }
+}

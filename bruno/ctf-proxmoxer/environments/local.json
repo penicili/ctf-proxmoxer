@@ -1,0 +1,20 @@
+{
+  "name": "local",
+  "variables": [
+    {
+      "name": "baseUrl",
+      "value": "http://localhost:8000",
+      "enabled": true
+    },
+    {
+      "name": "levelId",
+      "value": "3",
+      "enabled": true
+    },
+    {
+      "name": "challengeId",
+      "value": "1",
+      "enabled": true
+    }
+  ]
+}

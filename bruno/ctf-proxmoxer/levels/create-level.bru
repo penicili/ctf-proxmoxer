@@ -1,0 +1,22 @@
+meta {
+  name: Create Level
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/levels
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "name": "SQL Injection Basic",
+    "category": "A03:2021-Injection",
+    "difficulty": "easy",
+    "description": "Classic SQL injection challenge",
+    "points": 100,
+    "source_url": "https://github.com/penicili/sqli-basic"
+  }
+}

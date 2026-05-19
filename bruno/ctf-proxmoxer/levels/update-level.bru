@@ -1,0 +1,19 @@
+meta {
+  name: Update Level
+  type: http
+  seq: 4
+}
+
+put {
+  url: {{baseUrl}}/api/v1/levels/{{levelId}}
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "description": "Updated description",
+    "points": 150,
+    "is_active": true
+  }
+}

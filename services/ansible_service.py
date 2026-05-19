@@ -105,7 +105,8 @@ class AnsibleService:
             pve_host = self.settings.PROXMOX_HOST
             envvars["ANSIBLE_SSH_ARGS"] = (
                 f"-o ProxyCommand='ssh -i {key_path} -o StrictHostKeyChecking=no -W %h:%p {pve_user}@{pve_host}' "
-                f"-o StrictHostKeyChecking=no"
+                f"-o StrictHostKeyChecking=no "
+                f"-o UserKnownHostsFile=/dev/null"
             )
 
         logger.info(f"ANSIBLE_SSH_ARGS: {envvars.get('ANSIBLE_SSH_ARGS', 'not set')}")
