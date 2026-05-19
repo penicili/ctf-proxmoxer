@@ -1,0 +1,15 @@
+meta {
+  name: List Levels
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/levels
+  body: none
+  auth: none
+}
+
+params:query {
+  ~is_active: true
+}

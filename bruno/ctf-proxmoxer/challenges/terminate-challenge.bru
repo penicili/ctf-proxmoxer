@@ -1,0 +1,11 @@
+meta {
+  name: Terminate Challenge
+  type: http
+  seq: 4
+}
+
+delete {
+  url: {{baseUrl}}/api/v1/challenges/{{challengeId}}
+  body: none
+  auth: none
+}
