@@ -33,6 +33,9 @@ class Challenge(Base):
     flag_submitted: Mapped[bool] = mapped_column(default=False)
     flag_submitted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP, nullable=True)
     
+    # CTFd challenge ID setelah finalize
+    ctfd_id: Mapped[Optional[int]] = mapped_column(nullable=True, default=None)
+
     # Status
     is_active: Mapped[bool] = mapped_column(default=True, index=True)
     

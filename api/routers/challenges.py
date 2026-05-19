@@ -42,6 +42,7 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         is_active=challenge.is_active,
         created_at=challenge.created_at,
         updated_at=challenge.updated_at,
+        ctfd_id=challenge.ctfd_id,
         deployment_status=dep.status.value if dep else None,
         vm_id=dep.vm_id if dep else None,
         vm_name=dep.vm_name if dep else None,

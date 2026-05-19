@@ -143,6 +143,8 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
         ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access_http)
         if ctfd_id:
+            challenge.ctfd_id = ctfd_id
+            db.commit()
             logger.info(f"[deploy_bg] CTFd challenge finalized: ctfd_id={ctfd_id}")
         else:
             logger.warning(f"[deploy_bg] CTFd finalize skipped or failed for challenge {challenge_id}")

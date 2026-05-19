@@ -1,8 +1,8 @@
-"""init db
+"""init
 
-Revision ID: cce6fec59ea0
+Revision ID: d5d37266c4ec
 Revises: 
-Create Date: 2025-12-08 15:51:32.503730
+Create Date: 2026-05-19 14:45:10.141647
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'cce6fec59ea0'
+revision: str = 'd5d37266c4ec'
 down_revision: Union[str, Sequence[str], None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -29,6 +29,9 @@ def upgrade() -> None:
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('points', sa.Integer(), nullable=False),
     sa.Column('template_url', sa.String(length=255), nullable=True),
+    sa.Column('source_url', sa.String(length=500), nullable=True),
+    sa.Column('prepare_status', sa.Enum('NONE', 'PREPARING', 'READY', 'ERROR', name='preparestatusenum'), nullable=False),
+    sa.Column('prepare_error', sa.Text(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
@@ -46,9 +49,10 @@ def upgrade() -> None:
     sa.Column('flag', sa.String(length=255), nullable=True),
     sa.Column('flag_submitted', sa.Boolean(), nullable=False),
     sa.Column('flag_submitted_at', sa.TIMESTAMP(), nullable=True),
+    sa.Column('ctfd_id', sa.Integer(), nullable=True),
     sa.Column('is_active', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('created_at', sa.TIMESTAMP(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('updated_at', sa.TIMESTAMP(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
     sa.ForeignKeyConstraint(['level_id'], ['levels.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -70,13 +74,12 @@ def upgrade() -> None:
     sa.Column('stopped_at', sa.DateTime(), nullable=True),
     sa.Column('terminated_at', sa.DateTime(), nullable=True),
     sa.ForeignKeyConstraint(['challenge_id'], ['challenges.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('vm_name')
+    sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_deployments_challenge_id'), 'deployments', ['challenge_id'], unique=True)
     op.create_index(op.f('ix_deployments_id'), 'deployments', ['id'], unique=False)
     op.create_index(op.f('ix_deployments_status'), 'deployments', ['status'], unique=False)
-    op.create_index(op.f('ix_deployments_vm_id'), 'deployments', ['vm_id'], unique=True)
+    op.create_index(op.f('ix_deployments_vm_id'), 'deployments', ['vm_id'], unique=False)
     # ### end Alembic commands ###
 
 
