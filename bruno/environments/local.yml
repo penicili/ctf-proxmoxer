@@ -5,4 +5,4 @@ variables:
   - name: levelId
     value: "1"
   - name: challengeId
-    value: "2"
+    value: "3"
