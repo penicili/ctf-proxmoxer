@@ -116,7 +116,8 @@ class AnsibleService:
             inventory=inventory,
             extravars=extravars,
             envvars=envvars,
-            verbosity=3,
+            # verbosity 1= task result, 2= input parameters, 3= SSH commands, 4= plugins and shell outputs
+            verbosity=1,
         )
 
         # Log output — kalau gagal, log di INFO agar terlihat di log file
