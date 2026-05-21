@@ -23,6 +23,7 @@ class ChallengeResponse(BaseModel):
     vm_ip: Optional[str] = None
     error_message: Optional[str] = None
     started_at: Optional[datetime] = None
+    terminated_at: Optional[datetime] = None
 
     # CTFd challenge ID (set setelah finalize)
     ctfd_id: Optional[int] = None

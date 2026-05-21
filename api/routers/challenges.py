@@ -49,6 +49,7 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         vm_ip=dep.vm_ip if dep else None,
         error_message=dep.error_message if dep else None,
         started_at=dep.started_at if dep else None,
+        terminated_at=dep.terminated_at if dep else None,
         access_ssh=access_ssh,
         access_http=access_http,
     )
