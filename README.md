@@ -1,6 +1,42 @@
 # CTF Proxmoxer Platform
 
-FastAPI backend untuk orkestrasi deployment VM-based CTF challenge menggunakan Proxmox VE dan Ansible.
+Backend service yang digunakan untuk mengelola challenge CTF berbasis Virtual Machine dengan Proxmox VE. Bekerja dengan plugin CTFd [CTFd-proxmoxer-client](https://github.com/penicili/ctfd-proxmoxer-client) 
+
+
+
+
+## Arsitektur
+
+```mermaid
+flowchart TB
+    subgraph CTFd["CTFd"]
+        core["CTFd Core\n(Challenges, Teams, Flags)"]
+        plugin["ctfd-proxmoxer-client\n(Plugin)"]
+        plugin -- "baca/tulis data" --> core
+    end
+
+    plugin -- "HTTP REST API" --> backend
+
+    subgraph Backend["ctf-proxmoxer (FastAPI Backend)"]
+        backend["/api/v1/levels\n/api/v1/challenges"]
+    end
+
+    backend -- "Ansible (SSH)" --> builder
+    backend -- "Ansible (SSH)" --> vms
+    backend -- "Proxmox API" --> pve_api[("Proxmox VE")]
+
+    subgraph PVE["Proxmox VE"]
+        pve_api
+        builder["Image Builder\n10.10.10.110\n(docker build + push)"]
+        registry["Docker Registry\n10.10.10.5:5000"]
+        vms["Challenge VMs\n(per tim)"]
+
+        builder -- "push image" --> registry
+        registry -- "pull image" --> vms
+    end
+```
+
+---
 
 ## Stack
 
@@ -15,7 +51,7 @@ FastAPI backend untuk orkestrasi deployment VM-based CTF challenge menggunakan P
 ## Instalasi
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/penicili/ctf-proxmoxer.git
 cd ctf-proxmoxer
 
 python -m venv .venv
@@ -29,7 +65,7 @@ uvicorn app:app --host 0.0.0.0 --port 8000 --reload
 
 ---
 
-## Infrastruktur yang Diperlukan
+## Setup Infrastruktur yang Diperlukan
 
 Sebelum backend dapat digunakan, pastikan komponen berikut sudah disiapkan di Proxmox VE:
 
