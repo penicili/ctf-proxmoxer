@@ -69,17 +69,15 @@ def deploy_challenge_bg(challenge_id: int) -> None:
 
         level: Optional[Level] = challenge.level
 
-        # ── Step 1: CREATING + Reserve VMID ─────────────────────────────────
-        # VMID di-reserve ke DB SEBELUM clone dimulai agar concurrent deploy
-        # tidak mendapat VMID yang sama (_get_next_vmid cek DB juga).
+        # ── Step 1: CREATING ─────────────────────────────────────────────────
+        # VMID sudah di-reserve di router sebelum bg task di-queue.
+        # Tinggal baca dari deployment record — tidak perlu assign ulang.
         deployment.status = DeploymentStatus.CREATING
-        reserved_vmid = proxmox_service._get_next_vmid()
-        deployment.vm_id = reserved_vmid
-        deployment.vm_ip = f"{settings.VM_SUBNET}.{reserved_vmid}"
         db.commit()
-        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}', reserved VMID={reserved_vmid}")
+        reserved_vmid = deployment.vm_id
+        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}', VMID={reserved_vmid}")
 
-        # ── Step 2: Clone VM di Proxmox (pakai VMID yang sudah di-reserve) ──
+        # ── Step 2: Clone VM di Proxmox ──────────────────────────────────────
         vm_config = {
             "template_vmid": settings.TEMPLATE_VMID,
         }
@@ -89,7 +87,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
             team=challenge.team,
             time_limit=settings.DEFAULT_CHALLENGE_DURATION,
             config=vm_config,
-            vmid=reserved_vmid,    # ← pakai VMID yang sudah di-reserve
+            vmid=reserved_vmid,
         )
 
         deployment.vm_name = vm_result.info.name if vm_result.info else None

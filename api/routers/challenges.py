@@ -5,6 +5,7 @@ from typing import Optional
 from api.dependencies import DbSessionDep
 from models import Challenge, Deployment, Level
 from models.Deployment import DeploymentStatus
+from services.proxmox_service import ProxmoxService
 from schemas.requests.challenges_requests import CreateChallengeRequest
 from schemas.responses.challenges_responses import (
     ChallengeResponse,
@@ -115,7 +116,8 @@ def create_challenge(
     if level.prepare_status.value != "ready":
         raise HTTPException(status_code=400, detail=f"Level is not ready (status: {level.prepare_status.value}). Run prepare first.")
 
-    svc = ChallengeService(db, None, None, settings)  # type: ignore[arg-type]
+    svc            = ChallengeService(db, None, None, settings)  # type: ignore[arg-type]
+    proxmox_svc    = ProxmoxService(settings)
     results: list[CreateChallengeResult] = []
     deployed_count = 0
     skipped_count  = 0
@@ -133,12 +135,17 @@ def create_challenge(
             logger.info(f"Skipping team '{team_name}': active deployment already exists for level {request.level_id}")
             continue
 
-        # Buat Challenge + Deployment records
-        # Pakai savepoint (nested transaction) agar IntegrityError pada satu tim
-        # tidak merusak session untuk tim lain dalam request yang sama.
+        # Assign VMID di sini (sequential, satu per satu) sebelum bg task di-queue.
+        # Ini mencegah race condition: bg task tidak perlu cari VMID sendiri,
+        # tinggal pakai VMID yang sudah di-reserve ke DB.
+        try:
+            vmid = proxmox_svc._get_next_vmid()
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Tidak bisa assign VMID: {e}")
+
         flag = svc.generate_flag()
         try:
-            with db.begin_nested():   # savepoint — rollback partial kalau error
+            with db.begin_nested():
                 challenge = Challenge(
                     level_id=request.level_id,
                     team=team_name,
@@ -151,14 +158,14 @@ def create_challenge(
                 deployment = Deployment(
                     challenge_id=challenge.id,
                     status=DeploymentStatus.PENDING,
+                    vm_id=vmid,                                          # reserve VMID sekarang
+                    vm_ip=f"{settings.VM_SUBNET}.{vmid}",               # IP deterministik
                 )
                 db.add(deployment)
                 db.flush()
-            # Savepoint released (INSERT committed ke outer transaction)
             db.commit()
             db.refresh(challenge)
         except IntegrityError:
-            # Savepoint di-rollback otomatis, session tetap usable untuk tim berikutnya
             results.append(CreateChallengeResult(
                 team=team_name,
                 challenge_id=0,
@@ -169,7 +176,7 @@ def create_challenge(
             logger.warning(f"Concurrent conflict for team '{team_name}' level {request.level_id}, skipping")
             continue
 
-        logger.info(f"Challenge {challenge.id} created for team '{team_name}', queuing deployment")
+        logger.info(f"Challenge {challenge.id} created for team '{team_name}', VMID={vmid} reserved, queuing deployment")
         background_tasks.add_task(deploy_challenge_bg, challenge.id)
 
         results.append(CreateChallengeResult(
