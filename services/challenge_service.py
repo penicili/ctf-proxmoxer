@@ -321,14 +321,20 @@ def _finalize_ctfd_challenge(settings: Settings, challenge: Challenge, level: Le
     if access_http:
         description += f"\n\n**Challenge URL:** {access_http}"
 
-    # Step 1: Buat challenge di CTFd
+    # Step 1: Buat challenge di CTFd dengan custom challenge type
     challenge_payload = {
         "name": f"{level.name} [{challenge.team}]",
         "description": description.strip(),
         "category": level.category,
-        "value": level.points,
-        "type": "standard",
+        "value": level.initial_points,
+        "type": "team_isolated_dynamic",
         "state": "visible",
+        # Scoring params untuk cross-sibling decay
+        "level_id": level.id,
+        "assigned_team": challenge.team,
+        "initial": level.initial_points,
+        "minimum": level.minimum_points,
+        "decay": level.decay,
     }
     logger.info(f"[finalize] Getting challenge id  to CTFd")
     resp = requests.post(f"{base_url}/api/v1/challenges", json=challenge_payload, headers=headers)

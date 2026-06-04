@@ -59,6 +59,11 @@ class Level(Base):
     prepare_status: Mapped[PrepareStatusEnum] = mapped_column(default=PrepareStatusEnum.NONE)
     prepare_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
+    # Dynamic scoring params (cross-sibling decay)
+    initial_points: Mapped[int] = mapped_column(default=1000)
+    minimum_points: Mapped[int] = mapped_column(default=100)
+    decay: Mapped[int] = mapped_column(default=25)
+
     # Status
     is_active: Mapped[bool] = mapped_column(default=True, index=True)
     
