@@ -34,27 +34,22 @@ class ChallengeResponse(BaseModel):
     
     model_config = ConfigDict(from_attributes=True)
 
+class CreateChallengeResult(BaseModel):
+    """Hasil deploy untuk satu tim"""
+    team: str
+    challenge_id: int
+    flag: Optional[str] = None
+    skipped: bool = False
+    skip_reason: Optional[str] = None  # alasan jika di-skip (misal: sudah ada deployment aktif)
+
+
 class CreateChallengeResponse(BaseModel):
-    """Response untuk pembuatan challenge baru"""
+    """Response untuk pembuatan challenge — satu atau beberapa tim sekaligus"""
     success: bool
     message: str
-    challenge_id: int
-    vm_info: Optional[VMResult] = None
-    flag: Optional[str] = None
-    
-    model_config = ConfigDict(json_schema_extra={
-        "example": {
-            "success": True,
-            "message": "Challenge created successfully",
-            "challenge_id": 42,
-            "flag": "CTF{generated_flag}",
-            "vm_info": {
-                "status": "success",
-                "vmid": 1001,
-                "info": {"name": "TeamAlpha-1-1001"}
-            }
-        }
-    })
+    results: List[CreateChallengeResult]  # hasil per tim
+    deployed: int   # jumlah tim yang berhasil di-queue
+    skipped: int    # jumlah tim yang di-skip
 
 class ChallengeListResponse(BaseModel):
     """Response untuk list challenges"""

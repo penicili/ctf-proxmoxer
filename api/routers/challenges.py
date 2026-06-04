@@ -9,6 +9,7 @@ from schemas.responses.challenges_responses import (
     ChallengeResponse,
     ChallengeListResponse,
     CreateChallengeResponse,
+    CreateChallengeResult,
 )
 from services.challenge_service import ChallengeService, deploy_challenge_bg, terminate_challenge_bg
 from config.settings import settings
@@ -77,6 +78,28 @@ def list_challenges(
     )
 
 
+def _has_active_deployment(db, level_id: int, team_name: str) -> bool:
+    """
+    Cek apakah tim sudah punya challenge aktif untuk level ini.
+    Aktif = is_active=True DAN deployment statusnya bukan TERMINATED/ERROR.
+    """
+    existing = (
+        db.query(Challenge)
+        .join(Challenge.deployment)
+        .filter(
+            Challenge.level_id == level_id,
+            Challenge.team == team_name,
+            Challenge.is_active == True,
+            Deployment.status.notin_([
+                DeploymentStatus.TERMINATED,
+                DeploymentStatus.ERROR,
+            ])
+        )
+        .first()
+    )
+    return existing is not None
+
+
 @router.post("", response_model=CreateChallengeResponse, status_code=202)
 def create_challenge(
     db: DbSessionDep,
@@ -88,39 +111,75 @@ def create_challenge(
     if not level:
         raise HTTPException(status_code=404, detail="Level not found or inactive")
 
-    # Generate flag
+    if level.prepare_status.value != "ready":
+        raise HTTPException(status_code=400, detail=f"Level is not ready (status: {level.prepare_status.value}). Run prepare first.")
+
     svc = ChallengeService(db, None, None, settings)  # type: ignore[arg-type]
-    flag = svc.generate_flag()
+    results: list[CreateChallengeResult] = []
+    deployed_count = 0
+    skipped_count  = 0
 
-    # Buat Challenge record
-    challenge = Challenge(
-        level_id=request.level_id,
-        team=request.team_name,
-        flag=flag,
-        is_active=True,
-    )
-    db.add(challenge)
-    db.flush()  # dapat challenge.id tanpa commit
+    for team_name in request.team_names:
+        # Constraint: satu deployment aktif per (level, team)
+        if _has_active_deployment(db, request.level_id, team_name):
+            results.append(CreateChallengeResult(
+                team=team_name,
+                challenge_id=0,
+                skipped=True,
+                skip_reason=f"Team '{team_name}' sudah memiliki deployment aktif untuk level ini",
+            ))
+            skipped_count += 1
+            logger.info(f"Skipping team '{team_name}': active deployment already exists for level {request.level_id}")
+            continue
 
-    # Buat Deployment record
-    deployment = Deployment(
-        challenge_id=challenge.id,
-        status=DeploymentStatus.PENDING,
-    )
-    db.add(deployment)
-    db.commit()
-    db.refresh(challenge)
+        # Buat Challenge + Deployment records
+        flag = svc.generate_flag()
+        challenge = Challenge(
+            level_id=request.level_id,
+            team=team_name,
+            flag=flag,
+            is_active=True,
+        )
+        db.add(challenge)
+        db.flush()
 
-    logger.info(f"Challenge {challenge.id} created for team '{request.team_name}', queuing deployment")
+        deployment = Deployment(
+            challenge_id=challenge.id,
+            status=DeploymentStatus.PENDING,
+        )
+        db.add(deployment)
+        db.flush()
+        db.commit()
+        db.refresh(challenge)
 
-    # Queue background task
-    background_tasks.add_task(deploy_challenge_bg, challenge.id)
+        logger.info(f"Challenge {challenge.id} created for team '{team_name}', queuing deployment")
+        background_tasks.add_task(deploy_challenge_bg, challenge.id)
 
+        results.append(CreateChallengeResult(
+            team=team_name,
+            challenge_id=challenge.id,
+            flag=flag,
+            skipped=False,
+        ))
+        deployed_count += 1
+
+    if deployed_count == 0 and skipped_count > 0:
+        # Semua di-skip — return 409
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Semua tim sudah memiliki deployment aktif untuk level ini",
+                "results": [r.model_dump() for r in results],
+            }
+        )
+
+    total = len(request.team_names)
     return CreateChallengeResponse(
         success=True,
-        message="Challenge deployment started",
-        challenge_id=challenge.id,
-        flag=flag,
+        message=f"Deployment dimulai untuk {deployed_count}/{total} tim. {skipped_count} tim di-skip (sudah aktif).",
+        results=results,
+        deployed=deployed_count,
+        skipped=skipped_count,
     )
 
 
