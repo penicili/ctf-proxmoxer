@@ -25,12 +25,16 @@ Base = declarative_base()
 
 def get_db() -> Generator[Session, None, None]:
     """
-    Dependency to get database session
+    Dependency to get database session.
+    Rollback on exception supaya concurrent IntegrityError tidak block session pool.
     """
     db = SessionLocal()
     try:
         logger.debug("Database session created")
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
         logger.debug("Database session closed")

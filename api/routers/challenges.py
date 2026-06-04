@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, HTTPException
+from sqlalchemy.exc import IntegrityError
 from typing import Optional
 
 from api.dependencies import DbSessionDep
@@ -133,24 +134,40 @@ def create_challenge(
             continue
 
         # Buat Challenge + Deployment records
+        # Pakai savepoint (nested transaction) agar IntegrityError pada satu tim
+        # tidak merusak session untuk tim lain dalam request yang sama.
         flag = svc.generate_flag()
-        challenge = Challenge(
-            level_id=request.level_id,
-            team=team_name,
-            flag=flag,
-            is_active=True,
-        )
-        db.add(challenge)
-        db.flush()
+        try:
+            with db.begin_nested():   # savepoint — rollback partial kalau error
+                challenge = Challenge(
+                    level_id=request.level_id,
+                    team=team_name,
+                    flag=flag,
+                    is_active=True,
+                )
+                db.add(challenge)
+                db.flush()
 
-        deployment = Deployment(
-            challenge_id=challenge.id,
-            status=DeploymentStatus.PENDING,
-        )
-        db.add(deployment)
-        db.flush()
-        db.commit()
-        db.refresh(challenge)
+                deployment = Deployment(
+                    challenge_id=challenge.id,
+                    status=DeploymentStatus.PENDING,
+                )
+                db.add(deployment)
+                db.flush()
+            # Savepoint released (INSERT committed ke outer transaction)
+            db.commit()
+            db.refresh(challenge)
+        except IntegrityError:
+            # Savepoint di-rollback otomatis, session tetap usable untuk tim berikutnya
+            results.append(CreateChallengeResult(
+                team=team_name,
+                challenge_id=0,
+                skipped=True,
+                skip_reason=f"Team '{team_name}' sudah memiliki deployment aktif (concurrent conflict)",
+            ))
+            skipped_count += 1
+            logger.warning(f"Concurrent conflict for team '{team_name}' level {request.level_id}, skipping")
+            continue
 
         logger.info(f"Challenge {challenge.id} created for team '{team_name}', queuing deployment")
         background_tasks.add_task(deploy_challenge_bg, challenge.id)
