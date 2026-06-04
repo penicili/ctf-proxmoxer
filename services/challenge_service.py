@@ -2,6 +2,7 @@ import secrets
 import requests
 from datetime import datetime
 from typing import Optional
+from time import sleep
 
 from sqlalchemy.orm import Session
 
@@ -94,10 +95,24 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         db.commit()
         logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}, ip={deployment.vm_ip}")
 
-        # ── Wait for VM to boot + cloud-init network ─────────────────────
-        import time
-        logger.info("[deploy_bg] Waiting 30s for VM boot + cloud-init...")
-        time.sleep(30)
+        # ── Wait for VM ready via QEMU Guest Agent ping ──────────────────
+        proxmox  = proxmox_service._ensure_connected()
+        vmid     = vm_result.vmid
+        max_wait = 180
+        interval = 5
+        elapsed  = 0
+        logger.info(f"[deploy_bg] Waiting for QEMU guest agent on VMID {vmid}...")
+        while elapsed < max_wait:
+            try:
+                proxmox.nodes(settings.PROXMOX_NODE).qemu(vmid).agent.ping.post()
+                logger.info(f"[deploy_bg] Guest agent ready on VMID {vmid} after {elapsed}s")
+                break
+            except Exception:
+                pass
+            sleep(interval)
+            elapsed += interval
+        else:
+            raise VMCreationError(f"Guest agent on VMID {vmid} not ready after {max_wait}s")
 
         # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
         ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
