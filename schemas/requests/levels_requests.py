@@ -11,6 +11,9 @@ class CreateLevelRequest(BaseModel):
     points: int = Field(default=100, gt=0)
     template_url: Optional[str] = Field(default=None, max_length=255)
     source_url: Optional[str] = Field(default=None, max_length=500)
+    initial_points: int = Field(default=1000, gt=0)
+    minimum_points: int = Field(default=100, gt=0)
+    decay: int = Field(default=25, gt=0)
 
 
 class UpdateLevelRequest(BaseModel):
@@ -22,3 +25,6 @@ class UpdateLevelRequest(BaseModel):
     template_url: Optional[str] = Field(default=None, max_length=255)
     source_url: Optional[str] = Field(default=None, max_length=500)
     is_active: Optional[bool] = None
+    initial_points: Optional[int] = Field(default=None, gt=0)
+    minimum_points: Optional[int] = Field(default=None, gt=0)
+    decay: Optional[int] = Field(default=None, gt=0)

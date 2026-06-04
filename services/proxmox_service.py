@@ -85,24 +85,29 @@ class ProxmoxService:
             raise ProxmoxNodeError(f"Failed to list VMs: {e}")
 
     def create_vm(
-        self, 
-        level_id: int, 
-        team: str, 
-        time_limit: int, 
-        config: Dict[str, Any]
+        self,
+        level_id: int,
+        team: str,
+        time_limit: int,
+        config: Dict[str, Any],
+        vmid: Optional[int] = None,
     ) -> VMResult:
         """
-        Membuat VM baru dengan cara clone dari template yang sudah ada
+        Membuat VM baru dengan cara clone dari template yang sudah ada.
+
+        vmid: kalau sudah di-reserve sebelumnya (dari deploy_challenge_bg),
+              pass langsung agar tidak terjadi double allocation.
+              Kalau None, akan di-generate otomatis.
         """
-        
         team = team.strip()
         time_limit = max(1, time_limit)
-        
+
         logger.info(f"Cloning VM for team '{team}', level '{level_id}'...")
-        
+
         try:
             proxmox = self._ensure_connected()
-            vmid = self._get_next_vmid()
+            if vmid is None:
+                vmid = self._get_next_vmid()
             vm_name = f"{team}-{level_id}-{vmid}"
 
             template_vmid = int(config.get('template_vmid', getattr(self.settings, 'TEMPLATE_VMID', 0)))
@@ -201,19 +206,44 @@ class ProxmoxService:
         raise VMCreationError(f"Proxmox task timeout after {timeout}s: {upid}")
 
     def _get_next_vmid(self) -> int:
-        """Calculate next available VMID"""
-        all_vms = self.list_vms()
-        # Safe casting: filter first, then cast. 
-        # Using 'or 0' is a fallback for type checker, though logic prevents it.
-        existing_ids = {int(vm.get('vmid', 0)) for vm in all_vms if vm.get('vmid')}
-        
+        """
+        Dapatkan VMID berikutnya yang tersedia.
+
+        Cek dua sumber agar tidak terjadi race condition saat concurrent deploy:
+        1. Proxmox API — VM yang sudah ada (clone selesai)
+        2. DB deployments — VMID yang sudah di-reserve tapi clone belum selesai
+           (vm_id sudah disimpan ke DB sebelum clone dimulai)
+        """
         start_id = self.settings.STARTING_VMID
-        max_id = self.settings.MAX_VMID
-        
-        for i in range(start_id, max_id):
-            if i not in existing_ids:
-                return i
-        
+        max_id   = self.settings.MAX_VMID
+
+        # VMID yang sudah ada di Proxmox
+        all_vms     = self.list_vms()
+        proxmox_ids = {int(vm.get('vmid', 0)) for vm in all_vms if vm.get('vmid')}
+
+        # VMID yang sudah di-reserve di DB (deployment aktif, clone mungkin belum selesai)
+        from core.database import SessionLocal
+        from models.Deployment import Deployment, DeploymentStatus
+        db = SessionLocal()
+        try:
+            reserved = db.query(Deployment.vm_id).filter(
+                Deployment.vm_id.isnot(None),
+                Deployment.status.notin_([
+                    DeploymentStatus.TERMINATED,
+                    DeploymentStatus.ERROR,
+                ])
+            ).all()
+            db_ids = {r.vm_id for r in reserved}
+        finally:
+            db.close()
+
+        occupied = proxmox_ids | db_ids
+        logger.debug(f"[vmid] Proxmox: {len(proxmox_ids)}, DB reserved: {len(db_ids)}, total occupied: {len(occupied)}")
+
+        for vmid in range(start_id, max_id):
+            if vmid not in occupied:
+                return vmid
+
         raise ProxmoxNodeError("No available VMIDs in the configured range")
 
     def stop_vm(self, vmid: int) -> Dict[str, Any]:

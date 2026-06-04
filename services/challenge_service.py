@@ -2,6 +2,7 @@ import secrets
 import requests
 from datetime import datetime
 from typing import Optional
+from time import sleep
 
 from sqlalchemy.orm import Session
 
@@ -69,13 +70,15 @@ def deploy_challenge_bg(challenge_id: int) -> None:
 
         level: Optional[Level] = challenge.level
 
-        # ── Step 1: CREATING ────────────────────────────────────────────────
+        # ── Step 1: CREATING ─────────────────────────────────────────────────
+        # VMID sudah di-reserve di router sebelum bg task di-queue.
+        # Tinggal baca dari deployment record — tidak perlu assign ulang.
         deployment.status = DeploymentStatus.CREATING
         db.commit()
-        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}'")
+        reserved_vmid = deployment.vm_id
+        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}', VMID={reserved_vmid}")
 
-        # ── Step 2: Clone VM di Proxmox ─────────────────────────────────────
-        # Selalu clone dari base template — image challenge di-pull dari registry saat setup
+        # ── Step 2: Clone VM di Proxmox ──────────────────────────────────────
         vm_config = {
             "template_vmid": settings.TEMPLATE_VMID,
         }
@@ -85,19 +88,31 @@ def deploy_challenge_bg(challenge_id: int) -> None:
             team=challenge.team,
             time_limit=settings.DEFAULT_CHALLENGE_DURATION,
             config=vm_config,
+            vmid=reserved_vmid,
         )
 
-        deployment.vm_id   = vm_result.vmid
         deployment.vm_name = vm_result.info.name if vm_result.info else None
-        # IP deterministic dari VMID: e.g. VMID 201 → 10.10.10.201
-        deployment.vm_ip = f"{settings.VM_SUBNET}.{vm_result.vmid}"
         db.commit()
         logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}, ip={deployment.vm_ip}")
 
-        # ── Wait for VM to boot + cloud-init network ─────────────────────
-        import time
-        logger.info("[deploy_bg] Waiting 30s for VM boot + cloud-init...")
-        time.sleep(30)
+        # ── Wait for VM ready via QEMU Guest Agent ping ──────────────────
+        proxmox  = proxmox_service._ensure_connected()
+        vmid     = vm_result.vmid
+        max_wait = 180
+        interval = 5
+        elapsed  = 0
+        logger.info(f"[deploy_bg] Waiting for QEMU guest agent on VMID {vmid}...")
+        while elapsed < max_wait:
+            try:
+                proxmox.nodes(settings.PROXMOX_NODE).qemu(vmid).agent.ping.post()
+                logger.info(f"[deploy_bg] Guest agent ready on VMID {vmid} after {elapsed}s")
+                break
+            except Exception:
+                pass
+            sleep(interval)
+            elapsed += interval
+        else:
+            raise VMCreationError(f"Guest agent on VMID {vmid} not ready after {max_wait}s")
 
         # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
         ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
@@ -321,14 +336,20 @@ def _finalize_ctfd_challenge(settings: Settings, challenge: Challenge, level: Le
     if access_http:
         description += f"\n\n**Challenge URL:** {access_http}"
 
-    # Step 1: Buat challenge di CTFd
+    # Step 1: Buat challenge di CTFd dengan custom challenge type
     challenge_payload = {
         "name": f"{level.name} [{challenge.team}]",
         "description": description.strip(),
         "category": level.category,
-        "value": level.points,
-        "type": "standard",
+        "value": level.initial_points,
+        "type": "team_isolated_dynamic",
         "state": "visible",
+        # Scoring params untuk cross-sibling decay
+        "level_id": level.id,
+        "assigned_team": challenge.team,
+        "initial": level.initial_points,
+        "minimum": level.minimum_points,
+        "decay": level.decay,
     }
     logger.info(f"[finalize] Getting challenge id  to CTFd")
     resp = requests.post(f"{base_url}/api/v1/challenges", json=challenge_payload, headers=headers)

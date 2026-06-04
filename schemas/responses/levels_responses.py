@@ -16,6 +16,9 @@ class LevelResponse(BaseModel):
     prepare_error: Optional[str] = None
     is_active: bool
     created_at: datetime
+    initial_points: int = 1000
+    minimum_points: int = 100
+    decay: int = 25
 
     model_config = ConfigDict(from_attributes=True)
 
