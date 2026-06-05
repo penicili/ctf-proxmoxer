@@ -1,3 +1,4 @@
+import secrets
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy.exc import IntegrityError
 from typing import Optional
@@ -36,6 +37,8 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         access_ssh = f"ssh user@{settings.PVE_PUBLIC_IP} -p {ssh_port}"
         access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
 
+    is_running = dep and dep.status == DeploymentStatus.RUNNING
+
     return ChallengeResponse(
         id=challenge.id,
         level_id=challenge.level_id,
@@ -55,6 +58,8 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         terminated_at=dep.terminated_at if dep else None,
         access_ssh=access_ssh,
         access_http=access_http,
+        vm_username=challenge.team if is_running else None,
+        vm_password=challenge.vm_password if is_running else None,
     )
 
 
@@ -143,13 +148,15 @@ def create_challenge(
         except Exception as e:
             raise HTTPException(status_code=503, detail=f"Tidak bisa assign VMID: {e}")
 
-        flag = svc.generate_flag()
+        flag        = svc.generate_flag()
+        vm_password = secrets.token_urlsafe(12)
         try:
             with db.begin_nested():
                 challenge = Challenge(
                     level_id=request.level_id,
                     team=team_name,
                     flag=flag,
+                    vm_password=vm_password,
                     is_active=True,
                 )
                 db.add(challenge)

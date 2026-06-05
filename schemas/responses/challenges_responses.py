@@ -29,8 +29,12 @@ class ChallengeResponse(BaseModel):
     ctfd_id: Optional[int] = None
 
     # Access info (NAT port forwarding)
-    access_ssh: Optional[str] = None   # e.g. "ssh user@192.168.1.102 -p 22201"
-    access_http: Optional[str] = None  # e.g. "http://192.168.1.102:80201"
+    access_ssh: Optional[str] = None
+    access_http: Optional[str] = None
+
+    # HTTP Basic Auth credentials (hanya ditampilkan saat RUNNING)
+    vm_username: Optional[str] = None
+    vm_password: Optional[str] = None
     
     model_config = ConfigDict(from_attributes=True)
 
