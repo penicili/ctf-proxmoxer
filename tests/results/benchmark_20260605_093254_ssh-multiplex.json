@@ -1,0 +1,43 @@
+{
+  "timestamp": "2026-06-05T09:38:20.308719",
+  "label": "ssh-multiplex",
+  "meta": {
+    "backend": "http://localhost:8000/api/v1",
+    "level_id": 11,
+    "team": "BenchTeam"
+  },
+  "iterations": 2,
+  "prepare_time": null,
+  "results": [
+    {
+      "iteration": 1,
+      "challenge_id": 59,
+      "deploy_client": 135.67,
+      "deploy_server": 134.54,
+      "terminate_client": 14.18,
+      "terminate_server": 13.94
+    },
+    {
+      "iteration": 2,
+      "challenge_id": 60,
+      "deploy_client": 141.53,
+      "deploy_server": 135.86,
+      "terminate_client": 14.19,
+      "terminate_server": 20.64
+    }
+  ],
+  "summary": {
+    "deploy": {
+      "mean": 135.2,
+      "stdev": 0.93,
+      "min": 134.54,
+      "max": 135.86
+    },
+    "terminate": {
+      "mean": 17.29,
+      "stdev": 4.74,
+      "min": 13.94,
+      "max": 20.64
+    }
+  }
+}

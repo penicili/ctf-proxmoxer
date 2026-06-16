@@ -1,0 +1,107 @@
+{
+  "timestamp": "2026-06-06T00:29:41.142290",
+  "label": "final",
+  "meta": {
+    "backend": "http://localhost:8000/api/v1",
+    "level_id": 11,
+    "team": "BenchFinal"
+  },
+  "iterations": 10,
+  "prepare_time": null,
+  "results": [
+    {
+      "iteration": 1,
+      "challenge_id": 75,
+      "deploy_client": 150.88,
+      "deploy_server": 148.17,
+      "terminate_client": 9.15,
+      "terminate_server": 12.8
+    },
+    {
+      "iteration": 2,
+      "challenge_id": 76,
+      "deploy_client": 150.51,
+      "deploy_server": 149.61,
+      "terminate_client": 9.11,
+      "terminate_server": 13.58
+    },
+    {
+      "iteration": 3,
+      "challenge_id": 77,
+      "deploy_client": 155.63,
+      "deploy_server": 146.07,
+      "terminate_client": 9.13,
+      "terminate_server": 20.7
+    },
+    {
+      "iteration": 4,
+      "challenge_id": 78,
+      "deploy_client": 155.59,
+      "deploy_server": 153.07,
+      "terminate_client": 9.14,
+      "terminate_server": 15.87
+    },
+    {
+      "iteration": 5,
+      "challenge_id": 79,
+      "deploy_client": 150.34,
+      "deploy_server": 145.36,
+      "terminate_client": 9.14,
+      "terminate_server": 16.18
+    },
+    {
+      "iteration": 6,
+      "challenge_id": 80,
+      "deploy_client": 150.57,
+      "deploy_server": 147.27,
+      "terminate_client": 14.16,
+      "terminate_server": 18.1
+    },
+    {
+      "iteration": 7,
+      "challenge_id": 81,
+      "deploy_client": 165.9,
+      "deploy_server": 161.75,
+      "terminate_client": 19.22,
+      "terminate_server": 24.05
+    },
+    {
+      "iteration": 8,
+      "challenge_id": 82,
+      "deploy_client": 165.99,
+      "deploy_server": 164.25,
+      "terminate_client": 19.23,
+      "terminate_server": 23.14
+    },
+    {
+      "iteration": 9,
+      "challenge_id": 83,
+      "deploy_client": 165.87,
+      "deploy_server": 158.47,
+      "terminate_client": 14.17,
+      "terminate_server": 21.4
+    },
+    {
+      "iteration": 10,
+      "challenge_id": 84,
+      "deploy_client": 171.31,
+      "deploy_server": 166.96,
+      "terminate_client": 14.15,
+      "terminate_server": 21.07
+    }
+  ],
+  "summary": {
+    "deploy": {
+      "mean": 154.1,
+      "stdev": 8.1,
+      "min": 145.36,
+      "max": 166.96
+    },
+    "terminate": {
+      "mean": 18.69,
+      "stdev": 3.96,
+      "min": 12.8,
+      "max": 24.05
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "timestamp": "2026-06-05T09:21:24.930832",
+  "label": "profile",
+  "meta": {
+    "backend": "http://localhost:8000/api/v1",
+    "level_id": 11,
+    "team": "BenchTeam"
+  },
+  "iterations": 1,
+  "prepare_time": null,
+  "results": [
+    {
+      "iteration": 1,
+      "challenge_id": 57,
+      "deploy_client": 231.8,
+      "deploy_server": 226.26,
+      "terminate_client": 24.22,
+      "terminate_server": 27.26
+    }
+  ],
+  "summary": {
+    "deploy": {
+      "mean": 226.26,
+      "stdev": null,
+      "min": 226.26,
+      "max": 226.26
+    },
+    "terminate": {
+      "mean": 27.26,
+      "stdev": null,
+      "min": 27.26,
+      "max": 27.26
+    }
+  }
+}

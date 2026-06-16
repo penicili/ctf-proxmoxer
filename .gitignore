@@ -8,3 +8,4 @@ __pycache__/
 .vscode
 ctf_platform.db
 ctf_platform.log
+./tests/results/
