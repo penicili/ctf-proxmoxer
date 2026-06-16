@@ -2,9 +2,15 @@
 benchmark.py — Pengujian performa sistem deployment CTF
 Mengukur durasi prepare, deploy, dan terminate secara otomatis (sekuensial).
 
+Hasil disimpan ke tests/results/ dengan timestamp di nama file agar mudah
+dibandingkan antar-run (misal: sebelum vs sesudah fitur nginx auth).
+
 Penggunaan:
     # Deploy + terminate 10x (level sudah ready):
     python tests/benchmark.py --level-id 1 --team "BenchmarkTeam"
+
+    # Beri label run agar gampang dibandingkan di folder results:
+    python tests/benchmark.py --level-id 1 --team "BenchmarkTeam" --label "with-auth"
 
     # Termasuk ukur prepare:
     python tests/benchmark.py --level-id 1 --team "BenchmarkTeam" --measure-prepare
@@ -15,11 +21,22 @@ Penggunaan:
 
 import argparse
 import json
+import os
+import re
 import statistics
+import sys
 import time
 from datetime import datetime, timezone
 
 import requests
+
+# Console Windows default cp1252 tidak bisa encode karakter box-drawing (═ ─ →).
+# Paksa stdout/stderr ke UTF-8 agar log tidak crash.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:
+    pass
 
 # Config
 
@@ -29,6 +46,14 @@ POLL_INTERVAL = 3    # detik antar polling
 TIMEOUT       = 600  # detik maksimum menunggu tiap fase
 PAUSE_BETWEEN = 5    # detik jeda setelah terminate sebelum iterasi berikutnya
 
+# Saat backend sibuk menjalankan ansible_runner, latensi request bisa melonjak
+# >10s. Pakai read-timeout longgar + retry agar lonjakan ini tidak menggagalkan
+# iterasi (request hanya MEMBACA status, deploy sebenarnya jalan di background).
+REQ_TIMEOUT   = (5, 30)  # (connect, read) detik
+
+# Folder output (relatif terhadap lokasi file ini → tests/results)
+RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+
 
 # Helpers
 
@@ -36,13 +61,24 @@ def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
 
+def slugify(text: str) -> str:
+    """Ubah label jadi aman untuk nama file."""
+    return re.sub(r"[^a-zA-Z0-9_-]+", "-", text).strip("-").lower()
+
+
 def poll_challenge(challenge_id: int, target_status: str) -> dict:
     """Poll GET /challenges/{id} sampai status target tercapai."""
     deadline = time.monotonic() + TIMEOUT
     while time.monotonic() < deadline:
-        resp = requests.get(f"{BACKEND_URL}/challenges/{challenge_id}", timeout=10)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = requests.get(f"{BACKEND_URL}/challenges/{challenge_id}", timeout=REQ_TIMEOUT)
+            resp.raise_for_status()
+            data = resp.json()
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            # Backend lagi sibuk (ansible_runner) — bukan kegagalan deploy. Retry.
+            log(f"  challenge {challenge_id} → (backend sibuk, retry: {type(e).__name__})")
+            time.sleep(POLL_INTERVAL)
+            continue
         status = data.get("deployment_status", "")
         log(f"  challenge {challenge_id} → {status}")
         if status == target_status:
@@ -79,6 +115,40 @@ def dt_diff(start_str: str | None, end_str: str | None) -> float | None:
     return round((parse(end_str) - parse(start_str)).total_seconds(), 2)
 
 
+def deploy_one(level_id: int, team: str) -> int:
+    """
+    Kirim POST /challenges dengan skema multi-tim (team_names: [..]).
+    Kembalikan challenge_id tim pertama, atau raise kalau di-skip/gagal.
+    """
+    # Retry kalau backend lagi sibuk (timeout/connection) — POST deploy idempotent
+    # secara praktis di sini karena constraint 1-aktif-per-tim mencegah duplikat.
+    last_err = None
+    for attempt in range(5):
+        try:
+            resp = requests.post(f"{BACKEND_URL}/challenges", json={
+                "level_id":   level_id,
+                "team_names": [team],
+            }, timeout=REQ_TIMEOUT)
+            resp.raise_for_status()
+            break
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            last_err = e
+            log(f"  POST deploy timeout (attempt {attempt+1}/5), retry...")
+            time.sleep(POLL_INTERVAL)
+    else:
+        raise RuntimeError(f"POST /challenges gagal setelah 5x retry: {last_err}")
+    body = resp.json()
+
+    results = body.get("results", [])
+    if not results:
+        raise RuntimeError(f"Respons deploy tanpa results: {body}")
+
+    first = results[0]
+    if first.get("skipped"):
+        raise RuntimeError(f"Deploy di-skip: {first.get('skip_reason')}")
+    return first["challenge_id"]
+
+
 # ── Fase Prepare ──────────────────────────────────────────────────────────────
 
 def measure_prepare(level_id: int) -> float:
@@ -104,12 +174,7 @@ def run_iteration(iteration: int, level_id: int, team: str) -> dict:
     # ── Deploy ────────────────────────────────────────────────────────────────
     log("DEPLOY — mengirim request...")
     t_deploy = time.monotonic()
-    resp = requests.post(f"{BACKEND_URL}/challenges", json={
-        "level_id": level_id,
-        "team_name": team,
-    }, timeout=10)
-    resp.raise_for_status()
-    challenge_id = resp.json()["challenge_id"]
+    challenge_id = deploy_one(level_id, team)
     log(f"  challenge_id = {challenge_id}")
 
     data = poll_challenge(challenge_id, "running")
@@ -124,7 +189,7 @@ def run_iteration(iteration: int, level_id: int, team: str) -> dict:
     # ── Terminate ─────────────────────────────────────────────────────────────
     log("TERMINATE — mengirim request...")
     t_term = time.monotonic()
-    resp = requests.delete(f"{BACKEND_URL}/challenges/{challenge_id}", timeout=10)
+    resp = requests.delete(f"{BACKEND_URL}/challenges/{challenge_id}", timeout=REQ_TIMEOUT)
     resp.raise_for_status()
 
     data = poll_challenge(challenge_id, "terminated")
@@ -159,11 +224,11 @@ def _stats(vals: list) -> dict:
     }
 
 
-def print_summary(results: list, prepare_time: float | None):
+def print_summary(results: list, prepare_time: float | None, label: str | None):
     valid = [r for r in results if "error" not in r]
 
     print(f"\n{'═'*52}")
-    print("HASIL PENGUJIAN PERFORMA")
+    print("HASIL PENGUJIAN PERFORMA" + (f"  [{label}]" if label else ""))
     print(f"{'═'*52}")
 
     if prepare_time is not None:
@@ -188,16 +253,17 @@ def print_summary(results: list, prepare_time: float | None):
             "Min":       min,
             "Max":       max,
         }
-        for label, fn in fns.items():
+        for label_row, fn in fns.items():
             d_vals = [r["deploy_server"]    for r in valid if r.get("deploy_server")    is not None] \
                   or [r["deploy_client"]    for r in valid]
             t_vals = [r["terminate_server"] for r in valid if r.get("terminate_server") is not None] \
                   or [r["terminate_client"] for r in valid]
             def fmt(lst): return f"{fn(lst):.2f}" if lst and fn(lst) is not None else "—"
-            print(f"{label:<10} {fmt(d_vals):>10} {fmt(t_vals):>14}")
+            print(f"{label_row:<10} {fmt(d_vals):>10} {fmt(t_vals):>14}")
 
 
-def save_json(results: list, prepare_time: float | None, output_path: str):
+def save_json(results: list, prepare_time: float | None, output_path: str,
+              label: str | None, meta: dict):
     valid = [r for r in results if "error" not in r]
     d_vals = [r["deploy_server"]    for r in valid if r.get("deploy_server")    is not None] \
           or [r["deploy_client"]    for r in valid]
@@ -205,6 +271,8 @@ def save_json(results: list, prepare_time: float | None, output_path: str):
           or [r["terminate_client"] for r in valid]
     output = {
         "timestamp":    datetime.now().isoformat(),
+        "label":        label,
+        "meta":         meta,
         "iterations":   ITERATIONS,
         "prepare_time": prepare_time,
         "results":      results,
@@ -213,7 +281,8 @@ def save_json(results: list, prepare_time: float | None, output_path: str):
             "terminate": _stats(t_vals),
         },
     }
-    with open(output_path, "w") as f:
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, default=str)
     log(f"Hasil disimpan ke {output_path}")
 
@@ -234,12 +303,22 @@ def main():
                         help=f"Jumlah iterasi (default: {ITERATIONS})")
     parser.add_argument("--measure-prepare", action="store_true",
                         help="Ukur waktu prepare sebelum iterasi deploy/terminate")
-    parser.add_argument("--output",          default="tests/benchmark_results.json",
-                        help="Path file output JSON")
+    parser.add_argument("--label",           default=None,
+                        help="Label run (mis. 'with-auth' / 'no-auth'), masuk ke nama file & JSON")
+    parser.add_argument("--output",          default=None,
+                        help="Path file output JSON (default: tests/results/<timestamp>[_label].json)")
     args = parser.parse_args()
 
     BACKEND_URL = args.backend.rstrip("/")
     ITERATIONS  = args.iterations
+
+    # Tentukan path output: tests/results/benchmark_<timestamp>[_label].json
+    if args.output:
+        output_path = args.output
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        suffix = f"_{slugify(args.label)}" if args.label else ""
+        output_path = os.path.join(RESULTS_DIR, f"benchmark_{ts}{suffix}.json")
 
     prepare_time = None
     if args.measure_prepare:
@@ -255,8 +334,13 @@ def main():
             results.append({"iteration": i, "error": str(e)})
         time.sleep(PAUSE_BETWEEN)
 
-    print_summary(results, prepare_time)
-    save_json(results, prepare_time, args.output)
+    meta = {
+        "backend":  BACKEND_URL,
+        "level_id": args.level_id,
+        "team":     args.team,
+    }
+    print_summary(results, prepare_time, args.label)
+    save_json(results, prepare_time, output_path, args.label, meta)
 
 
 if __name__ == "__main__":

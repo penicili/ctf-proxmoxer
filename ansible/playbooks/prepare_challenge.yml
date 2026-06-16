@@ -43,6 +43,21 @@
       ansible.builtin.command:
         cmd: "docker push {{ full_image }}"
 
+    # Ambil docker-compose.yml dari repo yang sudah di-clone, salin balik ke
+    # control node (backend) supaya bisa disimpan ke DB. Saat deploy nanti VM
+    # tidak perlu clone repo lagi — cukup inject content ini.
+    - name: Cek docker-compose.yml ada
+      ansible.builtin.stat:
+        path: "{{ challenge_dir }}/docker-compose.yml"
+      register: compose_stat
+
+    - name: Fetch docker-compose.yml ke backend (control node)
+      ansible.builtin.fetch:
+        src:  "{{ challenge_dir }}/docker-compose.yml"
+        dest: "/tmp/ctf-compose/{{ image_tag }}.yml"
+        flat: yes
+      when: compose_stat.stat.exists
+
     - name: Check if public-images.txt exists
       ansible.builtin.stat:
         path: "{{ public_images_file }}"

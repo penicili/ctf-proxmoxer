@@ -1,15 +1,18 @@
 ---
 # setup_challenge.yml
 # Clone repo untuk mendapatkan docker-compose.yml, tulis .env, lalu docker compose up.
+# Nginx dikonfigurasi sebagai reverse proxy dengan HTTP Basic Auth per-tim.
 #
 # Required extra_vars:
-#   challenge_id:  int
-#   flag:          str
-#   team:          str
-#   vmid:          int
-#   image_tag:     str  — nama image di registry (e.g. "level-1")
-#   registry_host: str  — host:port registry (e.g. "10.10.10.5:5000")
-#   source_url:    str  — git repo URL challenge (untuk docker-compose.yml)
+#   challenge_id:      int
+#   flag:              str
+#   team:              str
+#   vmid:              int
+#   image_tag:         str  — nama image di registry (e.g. "level-1")
+#   registry_host:     str  — host:port registry (e.g. "10.10.10.5:5000")
+#   source_url:        str  — git repo URL challenge (untuk docker-compose.yml)
+#   vm_user:           str  — username untuk HTTP Basic Auth (nama tim)
+#   vm_password_hash:  str  — password hash APR MD5 untuk .htpasswd
 
 - name: Setup CTF challenge on VM
   hosts: all
@@ -28,12 +31,29 @@
         path: "{{ challenge_dir }}"
         state: absent
 
-    - name: Clone challenge repo
+    - name: Ensure challenge directory exists
+      ansible.builtin.file:
+        path:  "{{ challenge_dir }}"
+        state: directory
+
+    # Jalur cepat: tulis docker-compose.yml langsung dari content yang sudah
+    # diambil saat prepare (tanpa clone repo). source code challenge sudah ada
+    # di dalam image registry, jadi VM cukup butuh compose file ini.
+    - name: Write docker-compose.yml from stored content
+      ansible.builtin.copy:
+        dest:    "{{ challenge_dir }}/docker-compose.yml"
+        content: "{{ compose_content }}"
+      when: compose_content | default('') | length > 0
+
+    # Fallback (level lama yang di-prepare sebelum compose_content disimpan):
+    # clone repo seperti sebelumnya.
+    - name: Clone challenge repo (fallback)
       ansible.builtin.git:
         repo:  "{{ source_url }}"
         dest:  "{{ challenge_dir }}"
         depth: 1
         force: yes
+      when: compose_content | default('') | length == 0
 
     - name: Write .env file
       ansible.builtin.copy:
@@ -42,19 +62,72 @@
           FLAG={{ flag }}
           REGISTRY_HOST={{ registry_host }}
           IMAGE_TAG={{ image_tag }}
+          APP_PORT=8080
 
     - name: Pull images and start services
       ansible.builtin.command:
         cmd:   "docker compose up -d --pull always"
         chdir: "{{ challenge_dir }}"
 
-    - name: Wait for service on port 80
+    - name: Wait for service on port 8080
       ansible.builtin.wait_for:
         host:    127.0.0.1
-        port:    80
+        port:    8080
         delay:   2
         timeout: 60
 
+    # ── Nginx HTTP Basic Auth setup ─────────────────────────────────────────
+
+    - name: Write .htpasswd
+      ansible.builtin.copy:
+        dest:    /etc/nginx/.htpasswd
+        content: "{{ vm_user }}:{{ vm_password_hash }}\n"
+        owner:   www-data
+        group:   www-data
+        mode:    "0640"
+
+    - name: Configure nginx reverse proxy with basic auth
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-available/challenge
+        content: |
+          server {
+              listen 80;
+
+              auth_basic "CTF Challenge";
+              auth_basic_user_file /etc/nginx/.htpasswd;
+
+              location / {
+                  proxy_pass         http://127.0.0.1:8080;
+                  proxy_set_header   Host $host;
+                  proxy_set_header   X-Real-IP $remote_addr;
+                  proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+              }
+          }
+
+    - name: Enable challenge nginx site
+      ansible.builtin.file:
+        src:   /etc/nginx/sites-available/challenge
+        dest:  /etc/nginx/sites-enabled/challenge
+        state: link
+
+    - name: Disable nginx default site
+      ansible.builtin.file:
+        path:  /etc/nginx/sites-enabled/default
+        state: absent
+
+    - name: Restart nginx
+      ansible.builtin.service:
+        name:    nginx
+        state:   restarted
+        enabled: true
+
+    - name: Wait for nginx on port 80
+      ansible.builtin.wait_for:
+        host:    127.0.0.1
+        port:    80
+        delay:   1
+        timeout: 30
+
     - name: Show challenge info
       ansible.builtin.debug:
-        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, image={{ registry_host }}/{{ image_tag }}:latest"
+        msg: "Challenge {{ challenge_id }} ready — team={{ team }}, image={{ registry_host }}/{{ image_tag }}:latest, auth=enabled"

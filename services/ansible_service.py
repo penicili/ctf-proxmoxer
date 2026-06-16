@@ -98,16 +98,26 @@ class AnsibleService:
         logger.info(f"Extra vars keys: {list(extravars.keys())}")
 
         # Build envvars — untuk VM, set ANSIBLE_SSH_ARGS agar ProxyJump jalan
-        envvars = {}
+        # Aktifkan callback profile_tasks supaya tiap task diukur durasinya.
+        # (ANSIBLE_CALLBACKS_ENABLED untuk ansible >=2.11, CALLBACK_WHITELIST untuk versi lama)
+        envvars = {
+            "ANSIBLE_CALLBACKS_ENABLED": "profile_tasks",
+            "ANSIBLE_CALLBACK_WHITELIST": "profile_tasks",
+        }
         if hosts != "localhost" and not is_pve:
             key_path = self.settings.SSH_KEY_PATH
             pve_user = self.settings.SSH_USERNAME
             pve_host = self.settings.PROXMOX_HOST
+            # ControlMaster/ControlPersist: reuse SATU koneksi SSH untuk semua task.
+            # Tanpa ini tiap task membangun ulang tunnel ProxyJump (~5-24s/task overhead).
             envvars["ANSIBLE_SSH_ARGS"] = (
                 f"-o ProxyCommand='ssh -i {key_path} -o StrictHostKeyChecking=no -W %h:%p {pve_user}@{pve_host}' "
                 f"-o StrictHostKeyChecking=no "
-                f"-o UserKnownHostsFile=/dev/null"
+                f"-o UserKnownHostsFile=/dev/null "
+                f"-o ControlMaster=auto -o ControlPersist=120s"
             )
+            # Pipelining: kurangi jumlah operasi SSH per task (lebih sedikit round-trip).
+            envvars["ANSIBLE_PIPELINING"] = "True"
 
         logger.info(f"ANSIBLE_SSH_ARGS: {envvars.get('ANSIBLE_SSH_ARGS', 'not set')}")
 
@@ -120,20 +130,48 @@ class AnsibleService:
             verbosity=1,
         )
 
+        # Baca stdout sekali ke list (stream hanya bisa diiterasi sekali)
+        stdout_lines = list(r.stdout) if r.stdout else []
+
         # Log output — kalau gagal, log di INFO agar terlihat di log file
         if r.status != "successful":
-            if r.stdout:
-                for line in r.stdout:
-                    logger.info(f"[ansible] {line}")
+            for line in stdout_lines:
+                logger.info(f"[ansible] {line.rstrip()}")
             error_msg = f"Playbook '{playbook}' failed: status={r.status}, rc={r.rc}"
             if r.stats:
                 error_msg += f", stats={r.stats}"
             logger.error(error_msg)
             raise AnsiblePlaybookError(error_msg)
         else:
-            if r.stdout:
-                for line in r.stdout:
-                    logger.debug(f"[ansible] {line}")
+            for line in stdout_lines:
+                logger.debug(f"[ansible] {line.rstrip()}")
+
+        # Durasi per-task diambil dari event ansible_runner (tiap event hasil
+        # task punya 'duration'). Lebih andal daripada parsing stdout/profile_tasks.
+        try:
+            task_times: dict[str, float] = {}
+            for ev in r.events:
+                if ev.get("event") not in ("runner_on_ok", "runner_on_failed", "runner_on_async_ok"):
+                    continue
+                ed = ev.get("event_data", {}) or {}
+                task = ed.get("task")
+                dur  = ed.get("duration")
+                if dur is None and ed.get("start") and ed.get("end"):
+                    # fallback: hitung dari start/end ISO timestamp
+                    from datetime import datetime as _dt
+                    try:
+                        dur = (_dt.fromisoformat(ed["end"]) - _dt.fromisoformat(ed["start"])).total_seconds()
+                    except Exception:
+                        dur = None
+                if task and dur is not None:
+                    task_times[task] = task_times.get(task, 0.0) + float(dur)
+
+            if task_times:
+                logger.info(f"[profile] '{playbook}' durasi per-task (urut terlama):")
+                for task, secs in sorted(task_times.items(), key=lambda kv: kv[1], reverse=True):
+                    logger.info(f"[profile] {secs:7.1f}s  {task}")
+        except Exception as e:
+            logger.warning(f"[profile] gagal menghitung durasi task: {e}")
 
         logger.info(f"Playbook '{playbook}' completed successfully")
         return r

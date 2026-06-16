@@ -132,18 +132,25 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
 
         # ── Step 4: Setup challenge di VM via Ansible (docker compose up)
+        # Generate Apache MD5 hash untuk nginx .htpasswd
+        from passlib.hash import apr_md5_crypt
+        vm_password_hash = apr_md5_crypt.hash(challenge.vm_password) if challenge.vm_password else ""
+
         image_tag = level.template_url if level and level.template_url else f"level-{challenge.level_id}"
         ansible_service.run_playbook(
             playbook="setup_challenge.yml",
             hosts=deployment.vm_ip,
             extra_vars={
-                "challenge_id":  challenge.id,
-                "team":          challenge.team,
-                "flag":          challenge.flag,
-                "vmid":          vm_result.vmid,
-                "image_tag":     image_tag,
-                "registry_host": settings.REGISTRY_HOST,
-                "source_url":    level.source_url if level else "",
+                "challenge_id":      challenge.id,
+                "team":              challenge.team,
+                "flag":              challenge.flag,
+                "vmid":              vm_result.vmid,
+                "image_tag":         image_tag,
+                "registry_host":     settings.REGISTRY_HOST,
+                "source_url":        level.source_url if level else "",
+                "compose_content":   level.compose_content if level else "",
+                "vm_user":           challenge.team,
+                "vm_password_hash":  vm_password_hash,
             },
         )
         logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
@@ -294,6 +301,17 @@ def prepare_level_template_bg(level_id: int) -> None:
             },
         )
         logger.info(f"[prepare_tpl] Image pushed: {settings.REGISTRY_HOST}/{image_tag}:latest")
+
+        # ── Ambil docker-compose.yml yang di-fetch playbook ──────────────────
+        # Disimpan ke DB agar deploy tidak perlu clone repo dari GitHub lagi.
+        compose_path = f"/tmp/ctf-compose/{image_tag}.yml"
+        try:
+            with open(compose_path, "r", encoding="utf-8") as f:
+                level.compose_content = f.read()
+            logger.info(f"[prepare_tpl] docker-compose.yml tersimpan ke DB ({len(level.compose_content)} bytes)")
+        except FileNotFoundError:
+            level.compose_content = None
+            logger.warning(f"[prepare_tpl] docker-compose.yml tidak ditemukan di {compose_path}; deploy akan fallback ke git clone")
 
         # ── Update level ─────────────────────────────────────────────────────
         level.template_url = image_tag

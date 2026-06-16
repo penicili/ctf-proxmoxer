@@ -32,6 +32,9 @@ class Challenge(Base):
     flag: Mapped[Optional[str]] = mapped_column(String(255), unique=True, index=True, nullable=True)
     flag_submitted: Mapped[bool] = mapped_column(default=False)
     flag_submitted_at: Mapped[Optional[datetime]] = mapped_column(TIMESTAMP, nullable=True)
+
+    # HTTP Basic Auth credentials untuk nginx di VM (plaintext — ditampilkan ke peserta)
+    vm_password: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     
     # CTFd challenge ID setelah finalize
     ctfd_id: Mapped[Optional[int]] = mapped_column(nullable=True, default=None)
