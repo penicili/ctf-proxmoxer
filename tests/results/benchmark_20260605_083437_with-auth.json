@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-06-05T08:35:56.169166",
+  "label": "with-auth",
+  "meta": {
+    "backend": "http://localhost:8000/api/v1",
+    "level_id": 11,
+    "team": "BenchTeam"
+  },
+  "iterations": 3,
+  "prepare_time": null,
+  "results": [
+    {
+      "iteration": 1,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=10)"
+    },
+    {
+      "iteration": 2,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=10)"
+    },
+    {
+      "iteration": 3,
+      "error": "HTTPConnectionPool(host='localhost', port=8000): Read timed out. (read timeout=10)"
+    }
+  ],
+  "summary": {
+    "deploy": {
+      "mean": null,
+      "stdev": null,
+      "min": null,
+      "max": null
+    },
+    "terminate": {
+      "mean": null,
+      "stdev": null,
+      "min": null,
+      "max": null
+    }
+  }
+}
