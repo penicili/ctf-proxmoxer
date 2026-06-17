@@ -38,17 +38,31 @@ class AnsibleService:
         )
         self.vars_file.write_text(vars_content)
 
-    def _build_inventory(self, hosts: str, is_pve: bool = False, port_override: int = None) -> str:
+    def _build_inventory(self, hosts: str, is_pve: bool = False, port_override: int = None,
+                         direct: bool = False, ssh_user: str = None, ssh_key: str = None) -> str:
         """
         Build inventory string untuk ansible_runner.
 
         - "localhost"        → ansible_connection=local (untuk modul API)
+        - direct=True        → SSH LANGSUNG ke host (public IP + key), tanpa ProxyJump.
+                               Dipakai provider non-Proxmox (mis. AWS/EC2).
         - IP + is_pve=True   → SSH ke PVE host (pakai SSH key, tanpa password)
-        - IP + is_pve=False  → SSH ke VM (pakai SSH_PASSWORD)
+        - IP + is_pve=False  → SSH ke VM Proxmox via ProxyJump lewat PVE host
         - port_override      → override SSH port (untuk VM via port forwarding)
+        - ssh_user/ssh_key   → override user/key (dipakai mode direct, mis. "ubuntu" + key pair EC2)
         """
         if hosts == "localhost":
             return "localhost ansible_connection=local,"
+
+        # Direct SSH (mis. EC2): host terjangkau langsung tanpa bastion/ProxyJump.
+        if direct:
+            d_port = port_override or 22
+            d_user = ssh_user or self.settings.VM_SSH_USERNAME
+            d_key  = ssh_key or self.settings.SSH_KEY_PATH
+            return (
+                f"[all]\n"
+                f"{hosts} ansible_user={d_user} ansible_port={d_port} ansible_ssh_private_key_file={d_key}\n"
+            )
 
         port = port_override or self.settings.SSH_PORT
         key_path = self.settings.SSH_KEY_PATH
@@ -69,7 +83,8 @@ class AnsibleService:
                 f" ansible_ssh_private_key_file={key_path}\n"
             )
 
-    def run_playbook(self, playbook: str, hosts: str = "localhost", extra_vars: dict = None, is_pve: bool = False, port_override: int = None):
+    def run_playbook(self, playbook: str, hosts: str = "localhost", extra_vars: dict = None, is_pve: bool = False, port_override: int = None,
+                     direct: bool = False, ssh_user: str = None, ssh_key: str = None):
         """
         Run ansible playbook.
 
@@ -78,6 +93,9 @@ class AnsibleService:
         :param extra_vars: variabel tambahan yang dikirim ke playbook
         :param is_pve: True jika target adalah PVE host (pakai PROXMOX_PASSWORD), False untuk VM (pakai SSH_PASSWORD)
         :param port_override: override SSH port (e.g. untuk VM via port forwarding)
+        :param direct: True untuk SSH langsung ke host (mis. EC2 public IP), tanpa ProxyJump
+        :param ssh_user: override user SSH (mode direct, mis. "ubuntu")
+        :param ssh_key: override path key SSH (mode direct, mis. key pair EC2)
         :raises AnsiblePlaybookError: jika playbook gagal (status != "successful")
         """
         extravars = extra_vars or {}
@@ -90,7 +108,8 @@ class AnsibleService:
                 if file_vars:
                     extravars.update(file_vars)
 
-        inventory = self._build_inventory(hosts, is_pve=is_pve, port_override=port_override)
+        inventory = self._build_inventory(hosts, is_pve=is_pve, port_override=port_override,
+                                          direct=direct, ssh_user=ssh_user, ssh_key=ssh_key)
         playbook_path = str(self.playbook_dir / playbook)
 
         logger.info(f"Running playbook '{playbook}' on '{hosts}'")
@@ -104,7 +123,16 @@ class AnsibleService:
             "ANSIBLE_CALLBACKS_ENABLED": "profile_tasks",
             "ANSIBLE_CALLBACK_WHITELIST": "profile_tasks",
         }
-        if hosts != "localhost" and not is_pve:
+        if direct and hosts != "localhost":
+            # Direct SSH (mis. EC2): host terjangkau langsung, TANPA ProxyJump.
+            # Tetap reuse koneksi (ControlPersist) + pipelining agar cepat.
+            envvars["ANSIBLE_SSH_ARGS"] = (
+                f"-o StrictHostKeyChecking=no "
+                f"-o UserKnownHostsFile=/dev/null "
+                f"-o ControlMaster=auto -o ControlPersist=120s"
+            )
+            envvars["ANSIBLE_PIPELINING"] = "True"
+        elif hosts != "localhost" and not is_pve:
             key_path = self.settings.SSH_KEY_PATH
             pve_user = self.settings.SSH_USERNAME
             pve_host = self.settings.PROXMOX_HOST

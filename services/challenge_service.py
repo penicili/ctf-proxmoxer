@@ -88,6 +88,10 @@ def deploy_challenge_bg(challenge_id: int) -> None:
 
         # ── Step 3: Tunggu instance siap ─────────────────────────────────────
         provider.wait_ready(handle)
+        # Persist alamat instance (utk AWS, public IP baru diketahui setelah running;
+        # utk Proxmox nilainya sama dengan yang di-reserve).
+        deployment.vm_ip = handle.ansible_host
+        db.commit()
 
         # ── Step 4: Atur akses jaringan peserta ──────────────────────────────
         access = provider.configure_access(handle)
@@ -149,14 +153,14 @@ def terminate_challenge_bg(challenge_id: int) -> None:
         handle = provider.handle_from_deployment(deployment)
 
         # ── Step 2: Pembersihan di dalam instance (opsional) ─────────────────
-        if deployment.vm_id and deployment.vm_ip:
+        if handle.ansible_host:
             try:
                 provider.cleanup_challenge(handle, team=challenge.team)
             except Exception as e:
                 logger.warning(f"[terminate_bg] cleanup_challenge failed (non-fatal): {e}")
 
         # ── Step 2b: Cabut akses jaringan ────────────────────────────────────
-        if deployment.vm_id and deployment.vm_ip:
+        if handle.ref:
             try:
                 provider.remove_access(handle)
                 logger.info(f"[terminate_bg] Access removed for instance {handle.ref}")
@@ -164,7 +168,7 @@ def terminate_challenge_bg(challenge_id: int) -> None:
                 logger.warning(f"[terminate_bg] remove_access failed (non-fatal): {e}")
 
         # ── Step 3: Hentikan/hapus instance ──────────────────────────────────
-        if deployment.vm_id:
+        if handle.ref:
             try:
                 provider.destroy_instance(handle)
                 deployment.stopped_at = datetime.utcnow()

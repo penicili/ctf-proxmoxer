@@ -86,6 +86,18 @@ class Settings(BaseSettings):
     CTFD_URL: str = "http://localhost:4000"
     CTFD_API_TOKEN: str = ""
 
+    # AWS (dipakai saat PROVIDER="aws"). Kredensial sebaiknya diisi via .env (gitignored).
+    AWS_REGION: str = "ap-southeast-1"
+    AWS_ACCESS_KEY_ID: str = ""
+    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_AMI_ID: str = ""               # AMI dengan docker + nginx (atau base Ubuntu + playbook install)
+    AWS_INSTANCE_TYPE: str = "t3.micro"
+    AWS_SUBNET_ID: str = ""            # kosong = default subnet VPC
+    AWS_SECURITY_GROUP_ID: str = ""    # SG yang mengizinkan porta 80 (challenge) + 22 (Ansible)
+    AWS_KEY_PAIR_NAME: str = ""        # nama EC2 key pair (untuk SSH)
+    AWS_SSH_USER: str = "ubuntu"       # user SSH pada AMI (ubuntu / ec2-user)
+    AWS_SSH_KEY_PATH: str = ""         # path lokal private key .pem (untuk Ansible)
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "ctf_platform.log"

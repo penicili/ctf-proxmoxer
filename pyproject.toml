@@ -22,4 +22,5 @@ dependencies = [
     "ansible-core",
     "psutil>=7.2.2",
     "passlib[bcrypt]",
+    "boto3>=1.43.31",
 ]

@@ -28,8 +28,8 @@ def get_provider(settings: Settings) -> InfraProvider:
     name = (getattr(settings, "PROVIDER", "proxmox") or "proxmox").lower()
     if name == "proxmox":
         return ProxmoxProvider(settings)
-    # Pengembangan lanjutan:
-    # if name == "aws":
-    #     from services.providers.aws_provider import AWSProvider
-    #     return AWSProvider(settings)
-    raise ValueError(f"PROVIDER tidak dikenal: '{name}' (pilihan: proxmox)")
+    if name == "aws":
+        # Lazy import agar boto3 hanya wajib saat PROVIDER=aws.
+        from services.providers.aws_provider import AWSProvider
+        return AWSProvider(settings)
+    raise ValueError(f"PROVIDER tidak dikenal: '{name}' (pilihan: proxmox, aws)")
