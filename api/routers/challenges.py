@@ -7,6 +7,7 @@ from api.dependencies import DbSessionDep
 from models import Challenge, Deployment, Level
 from models.Deployment import DeploymentStatus
 from services.proxmox_service import ProxmoxService
+from services.providers import get_provider
 from schemas.requests.challenges_requests import CreateChallengeRequest
 from schemas.responses.challenges_responses import (
     ChallengeResponse,
@@ -122,7 +123,7 @@ def create_challenge(
         raise HTTPException(status_code=400, detail=f"Level is not ready (status: {level.prepare_status.value}). Run prepare first.")
 
     svc            = ChallengeService(db, None, None, settings)  # type: ignore[arg-type]
-    proxmox_svc    = ProxmoxService(settings)
+    provider       = get_provider(settings)
     results: list[CreateChallengeResult] = []
     deployed_count = 0
     skipped_count  = 0
@@ -140,13 +141,13 @@ def create_challenge(
             logger.info(f"Skipping team '{team_name}': active deployment already exists for level {request.level_id}")
             continue
 
-        # Assign VMID di sini (sequential, satu per satu) sebelum bg task di-queue.
-        # Ini mencegah race condition: bg task tidak perlu cari VMID sendiri,
-        # tinggal pakai VMID yang sudah di-reserve ke DB.
+        # Reserve identifier instance (mis. VMID) di sini, sequential, sebelum bg
+        # task di-queue. Mencegah race condition: bg task tinggal pakai identifier
+        # yang sudah di-reserve ke DB.
         try:
-            vmid = proxmox_svc._get_next_vmid()
+            reserved = provider.reserve(level_id=request.level_id, team=team_name)
         except Exception as e:
-            raise HTTPException(status_code=503, detail=f"Tidak bisa assign VMID: {e}")
+            raise HTTPException(status_code=503, detail=f"Tidak bisa reserve instance: {e}")
 
         flag        = svc.generate_flag()
         vm_password = secrets.token_urlsafe(12)
@@ -165,8 +166,10 @@ def create_challenge(
                 deployment = Deployment(
                     challenge_id=challenge.id,
                     status=DeploymentStatus.PENDING,
-                    vm_id=vmid,                                          # reserve VMID sekarang
-                    vm_ip=f"{settings.VM_SUBNET}.{vmid}",               # IP deterministik
+                    provider=provider.name,
+                    vm_id=reserved.vm_id,                               # reserve identifier sekarang
+                    vm_name=reserved.vm_name,
+                    vm_ip=reserved.vm_ip,                               # alamat (deterministik utk proxmox)
                 )
                 db.add(deployment)
                 db.flush()
@@ -183,7 +186,7 @@ def create_challenge(
             logger.warning(f"Concurrent conflict for team '{team_name}' level {request.level_id}, skipping")
             continue
 
-        logger.info(f"Challenge {challenge.id} created for team '{team_name}', VMID={vmid} reserved, queuing deployment")
+        logger.info(f"Challenge {challenge.id} created for team '{team_name}', instance ref={reserved.vm_id} reserved via {provider.name}, queuing deployment")
         background_tasks.add_task(deploy_challenge_bg, challenge.id)
 
         results.append(CreateChallengeResult(

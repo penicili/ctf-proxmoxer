@@ -29,7 +29,10 @@ class Settings(BaseSettings):
     DB_DATABASE: str = "ctf_db"
 
     DB_URL: str= "sqlite:///./ctf_platform.db"
-    
+
+    # Infrastructure provider: "proxmox" (default) atau "aws" (pengembangan lanjutan)
+    PROVIDER: str = "proxmox"
+
     # Proxmox
     PROXMOX_HOST: str = "192.168.1.102"
     PROXMOX_USER: str = "root@pam"

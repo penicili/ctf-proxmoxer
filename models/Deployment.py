@@ -32,6 +32,9 @@ class Deployment(Base):
     # Foreign Key to Challenge (One-to-One)
     challenge_id: Mapped[int] = mapped_column(ForeignKey("challenges.id", ondelete="CASCADE"), unique=True, index=True)
     
+    # Infrastructure provider yang menyediakan instance ini ("proxmox", "aws", dst)
+    provider: Mapped[str] = mapped_column(String(20), default="proxmox", server_default="proxmox", index=True)
+
     # VM Details
     vm_id: Mapped[Optional[int]] = mapped_column(index=True, nullable=True)  # Proxmox VMID (bisa recycle setelah terminate)
     vm_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # VM name
@@ -63,6 +66,7 @@ class Deployment(Base):
         data = {
             "id": self.id,
             "challenge_id": self.challenge_id,
+            "provider": self.provider,
             "vm_id": self.vm_id,
             "vm_name": self.vm_name,
             "vm_ip": self.vm_ip,

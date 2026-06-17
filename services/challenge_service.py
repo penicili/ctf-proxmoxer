@@ -15,6 +15,7 @@ from models.Deployment import DeploymentStatus
 from models.Level import PrepareStatusEnum
 from services.proxmox_service import ProxmoxService
 from services.ansible_service import AnsibleService
+from services.providers import get_provider
 
 
 class ChallengeService:
@@ -55,8 +56,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
     db: Session = SessionLocal()
     try:
         from config.settings import settings
-        proxmox_service = ProxmoxService(settings)
-        ansible_service = AnsibleService(settings)
+        provider = get_provider(settings)
 
         challenge: Optional[Challenge] = db.query(Challenge).filter(Challenge.id == challenge_id).first()
         if not challenge:
@@ -71,99 +71,40 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         level: Optional[Level] = challenge.level
 
         # ── Step 1: CREATING ─────────────────────────────────────────────────
-        # VMID sudah di-reserve di router sebelum bg task di-queue.
-        # Tinggal baca dari deployment record — tidak perlu assign ulang.
+        # Identifier (mis. VMID) sudah di-reserve di router sebelum bg task
+        # di-queue, tersimpan di deployment record.
         deployment.status = DeploymentStatus.CREATING
         db.commit()
-        reserved_vmid = deployment.vm_id
-        logger.info(f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}', VMID={reserved_vmid}")
-
-        # ── Step 2: Clone VM di Proxmox ──────────────────────────────────────
-        vm_config = {
-            "template_vmid": settings.TEMPLATE_VMID,
-        }
-
-        vm_result = proxmox_service.create_vm(
-            level_id=challenge.level_id,
-            team=challenge.team,
-            time_limit=settings.DEFAULT_CHALLENGE_DURATION,
-            config=vm_config,
-            vmid=reserved_vmid,
+        logger.info(
+            f"[deploy_bg] Deploying challenge {challenge_id} for team '{challenge.team}' "
+            f"via {provider.name} (ref={deployment.vm_id})"
         )
 
-        deployment.vm_name = vm_result.info.name if vm_result.info else None
+        # ── Step 2: Buat instance (provider-specific) ────────────────────────
+        handle = provider.create_instance(challenge=challenge, deployment=deployment, level=level)
+        deployment.vm_name = handle.name
         db.commit()
-        logger.info(f"[deploy_bg] VM created: vmid={vm_result.vmid}, ip={deployment.vm_ip}")
+        logger.info(f"[deploy_bg] Instance created: ref={handle.ref}, host={handle.ansible_host}")
 
-        # ── Wait for VM ready via QEMU Guest Agent ping ──────────────────
-        proxmox  = proxmox_service._ensure_connected()
-        vmid     = vm_result.vmid
-        max_wait = 180
-        interval = 5
-        elapsed  = 0
-        logger.info(f"[deploy_bg] Waiting for QEMU guest agent on VMID {vmid}...")
-        while elapsed < max_wait:
-            try:
-                proxmox.nodes(settings.PROXMOX_NODE).qemu(vmid).agent.ping.post()
-                logger.info(f"[deploy_bg] Guest agent ready on VMID {vmid} after {elapsed}s")
-                break
-            except Exception:
-                pass
-            sleep(interval)
-            elapsed += interval
-        else:
-            raise VMCreationError(f"Guest agent on VMID {vmid} not ready after {max_wait}s")
+        # ── Step 3: Tunggu instance siap ─────────────────────────────────────
+        provider.wait_ready(handle)
 
-        # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
-        ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
-        http_port = settings.HTTP_PORT_BASE + vm_result.vmid
+        # ── Step 4: Atur akses jaringan peserta ──────────────────────────────
+        access = provider.configure_access(handle)
+        logger.info(f"[deploy_bg] Access configured: {access.url}")
 
-        ansible_service.run_playbook(
-            playbook="setup_port_forward.yml",
-            hosts=settings.PROXMOX_HOST,
-            is_pve=True,
-            extra_vars={
-                "vm_ip":     deployment.vm_ip,
-                "ssh_port":  ssh_port,
-                "http_port": http_port,
-                "pve_public_ip": settings.PVE_PUBLIC_IP,
-            },
-        )
-        logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
+        # ── Step 5: Setup challenge di dalam instance (compose up + auth) ─────
+        provider.setup_challenge(handle, challenge=challenge, level=level)
+        logger.info(f"[deploy_bg] setup_challenge done for challenge {challenge_id}")
 
-        # ── Step 4: Setup challenge di VM via Ansible (docker compose up)
-        # Generate Apache MD5 hash untuk nginx .htpasswd
-        from passlib.hash import apr_md5_crypt
-        vm_password_hash = apr_md5_crypt.hash(challenge.vm_password) if challenge.vm_password else ""
-
-        image_tag = level.template_url if level and level.template_url else f"level-{challenge.level_id}"
-        ansible_service.run_playbook(
-            playbook="setup_challenge.yml",
-            hosts=deployment.vm_ip,
-            extra_vars={
-                "challenge_id":      challenge.id,
-                "team":              challenge.team,
-                "flag":              challenge.flag,
-                "vmid":              vm_result.vmid,
-                "image_tag":         image_tag,
-                "registry_host":     settings.REGISTRY_HOST,
-                "source_url":        level.source_url if level else "",
-                "compose_content":   level.compose_content if level else "",
-                "vm_user":           challenge.team,
-                "vm_password_hash":  vm_password_hash,
-            },
-        )
-        logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
-
-        # ── Step 5: RUNNING ─────────────────────────────────────────────────
+        # ── Step 6: RUNNING ──────────────────────────────────────────────────
         deployment.status     = DeploymentStatus.RUNNING
         deployment.started_at = datetime.utcnow()
         db.commit()
         logger.info(f"[deploy_bg] Challenge {challenge_id} is now RUNNING")
 
-        # ── Step 6: Buat challenge + flag di CTFd via API ───────────────
-        access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
-        ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access_http)
+        # ── Step 7: Buat challenge + flag di CTFd via API ────────────────────
+        ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access.url)
         if ctfd_id:
             challenge.ctfd_id = ctfd_id
             db.commit()
@@ -188,8 +129,7 @@ def terminate_challenge_bg(challenge_id: int) -> None:
     db: Session = SessionLocal()
     try:
         from config.settings import settings
-        proxmox_service = ProxmoxService(settings)
-        ansible_service = AnsibleService(settings)
+        provider = get_provider(settings)
 
         challenge: Optional[Challenge] = db.query(Challenge).filter(Challenge.id == challenge_id).first()
         if not challenge:
@@ -204,51 +144,34 @@ def terminate_challenge_bg(challenge_id: int) -> None:
         # ── Step 1: TERMINATING ─────────────────────────────────────────────
         deployment.status = DeploymentStatus.TERMINATING
         db.commit()
-        logger.info(f"[terminate_bg] Terminating challenge {challenge_id}")
+        logger.info(f"[terminate_bg] Terminating challenge {challenge_id} via {deployment.provider}")
 
-        # ── Step 2: (Opsional) Cleanup playbook ─────────────────────────────
+        handle = provider.handle_from_deployment(deployment)
+
+        # ── Step 2: Pembersihan di dalam instance (opsional) ─────────────────
         if deployment.vm_id and deployment.vm_ip:
             try:
-                ansible_service.run_playbook(
-                    playbook="post_challenge.yml",
-                    hosts=deployment.vm_ip,
-                    extra_vars={
-                        "vmid":  deployment.vm_id,
-                        "team":  challenge.team,
-                    },
-                )
+                provider.cleanup_challenge(handle, team=challenge.team)
             except Exception as e:
-                logger.warning(f"[terminate_bg] post_challenge playbook failed (non-fatal): {e}")
+                logger.warning(f"[terminate_bg] cleanup_challenge failed (non-fatal): {e}")
 
-        # ── Step 2b: Remove port forwarding ───────────────────────────────
+        # ── Step 2b: Cabut akses jaringan ────────────────────────────────────
         if deployment.vm_id and deployment.vm_ip:
             try:
-                ssh_port = settings.SSH_PORT_BASE + deployment.vm_id
-                http_port = settings.HTTP_PORT_BASE + deployment.vm_id
-                ansible_service.run_playbook(
-                    playbook="remove_port_forward.yml",
-                    hosts=settings.PROXMOX_HOST,
-                    is_pve=True,
-                    extra_vars={
-                        "vm_ip":     deployment.vm_ip,
-                        "ssh_port":  ssh_port,
-                        "http_port": http_port,
-                        "pve_public_ip": settings.PVE_PUBLIC_IP,
-                    },
-                )
-                logger.info(f"[terminate_bg] Port forwarding removed for VM {deployment.vm_id}")
+                provider.remove_access(handle)
+                logger.info(f"[terminate_bg] Access removed for instance {handle.ref}")
             except Exception as e:
-                logger.warning(f"[terminate_bg] remove_port_forward failed (non-fatal): {e}")
+                logger.warning(f"[terminate_bg] remove_access failed (non-fatal): {e}")
 
-        # ── Step 3: Stop VM ─────────────────────────────────────────────────
+        # ── Step 3: Hentikan/hapus instance ──────────────────────────────────
         if deployment.vm_id:
             try:
-                proxmox_service.stop_vm(deployment.vm_id)
+                provider.destroy_instance(handle)
                 deployment.stopped_at = datetime.utcnow()
                 db.commit()
-                logger.info(f"[terminate_bg] VM {deployment.vm_id} stopped")
+                logger.info(f"[terminate_bg] Instance {handle.ref} destroyed")
             except Exception as e:
-                logger.warning(f"[terminate_bg] stop_vm failed (non-fatal): {e}")
+                logger.warning(f"[terminate_bg] destroy_instance failed (non-fatal): {e}")
 
         # ── Step 4: TERMINATED ──────────────────────────────────────────────
         deployment.status        = DeploymentStatus.TERMINATED
