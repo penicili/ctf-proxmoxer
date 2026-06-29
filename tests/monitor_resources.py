@@ -6,6 +6,9 @@ CATATAN: Script ini harus dijalankan di mesin yang sama dengan backend
 karena menggunakan psutil untuk membaca resource proses secara lokal.
 
 Penggunaan:
+    # Tanpa argumen (default: --level-id 2 --team testteam-A):
+    python tests/monitor_resources.py
+
     # Ukur deploy + terminate (level sudah ready):
     python tests/monitor_resources.py --level-id 1 --team "MonitorTeam"
 
@@ -241,8 +244,8 @@ def main():
                         help="Port backend untuk deteksi proses (default: 8000)")
     parser.add_argument("--pid",             type=int, default=None,
                         help="PID proses backend (override deteksi otomatis)")
-    parser.add_argument("--level-id",        type=int, required=True)
-    parser.add_argument("--team",            required=True)
+    parser.add_argument("--level-id",        type=int, default=2)
+    parser.add_argument("--team",            default="testteam-A")
     parser.add_argument("--measure-prepare", action="store_true",
                         help="Ukur fase prepare sebelum deploy/terminate")
     parser.add_argument("--output",          default="tests/monitor_resources_results.json")

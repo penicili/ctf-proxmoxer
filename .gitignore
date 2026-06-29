@@ -9,3 +9,4 @@ __pycache__/
 ctf_platform.db
 ctf_platform.log
 /tests/results/*
+*.db

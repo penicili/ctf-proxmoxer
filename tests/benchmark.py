@@ -6,6 +6,9 @@ Hasil disimpan ke tests/results/ dengan timestamp di nama file agar mudah
 dibandingkan antar-run (misal: sebelum vs sesudah fitur nginx auth).
 
 Penggunaan:
+    # Tanpa argumen (default: --level-id 2 --team testteam-A):
+    python tests/benchmark.py
+
     # Deploy + terminate 10x (level sudah ready):
     python tests/benchmark.py --level-id 1 --team "BenchmarkTeam"
 
@@ -30,8 +33,6 @@ from datetime import datetime, timezone
 
 import requests
 
-# Console Windows default cp1252 tidak bisa encode karakter box-drawing (═ ─ →).
-# Paksa stdout/stderr ke UTF-8 agar log tidak crash.
 try:
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -60,11 +61,9 @@ RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results"
 def log(msg: str):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-
 def slugify(text: str) -> str:
     """Ubah label jadi aman untuk nama file."""
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", text).strip("-").lower()
-
 
 def poll_challenge(challenge_id: int, target_status: str) -> dict:
     """Poll GET /challenges/{id} sampai status target tercapai."""
@@ -88,7 +87,6 @@ def poll_challenge(challenge_id: int, target_status: str) -> dict:
         time.sleep(POLL_INTERVAL)
     raise TimeoutError(f"Timeout menunggu status '{target_status}' pada challenge {challenge_id}")
 
-
 def poll_level(level_id: int, target_status: str) -> dict:
     """Poll GET /levels/{id} sampai prepare_status target tercapai."""
     deadline = time.monotonic() + TIMEOUT
@@ -104,7 +102,6 @@ def poll_level(level_id: int, target_status: str) -> dict:
             raise RuntimeError(f"Level {level_id} prepare error: {data.get('prepare_error')}")
         time.sleep(POLL_INTERVAL)
     raise TimeoutError(f"Timeout menunggu prepare_status '{target_status}' pada level {level_id}")
-
 
 def dt_diff(start_str: str | None, end_str: str | None) -> float | None:
     """Hitung selisih dua ISO datetime string dalam detik (server-side)."""
@@ -180,6 +177,9 @@ def run_iteration(iteration: int, level_id: int, team: str) -> dict:
     data = poll_challenge(challenge_id, "running")
     deploy_client = round(time.monotonic() - t_deploy, 2)
 
+    # VMID yang dibuat (untuk cleanup `qm destroy` di akhir benchmark)
+    vm_id = data.get("vm_id")
+
     # Server-side: selisih created_at → started_at (tersimpan di DB)
     deploy_server = dt_diff(data.get("created_at"), data.get("started_at"))
 
@@ -203,6 +203,7 @@ def run_iteration(iteration: int, level_id: int, team: str) -> dict:
     return {
         "iteration":        iteration,
         "challenge_id":     challenge_id,
+        "vm_id":            vm_id,            # VMID Proxmox (untuk qm destroy di akhir)
         "deploy_client":    deploy_client,    # waktu total deploy (sisi klien)
         "deploy_server":    deploy_server,    # waktu deploy dari DB (created_at → started_at)
         "terminate_client": terminate_client, # waktu total terminate (sisi klien)
@@ -287,6 +288,45 @@ def save_json(results: list, prepare_time: float | None, output_path: str,
     log(f"Hasil disimpan ke {output_path}")
 
 
+# ── Cleanup VM ─────────────────────────────────────────────────────────────────
+
+def destroy_vms(vmids: list) -> None:
+    """
+    Hapus (qm destroy --purge) semua VM yang dibuat selama benchmark, satu per satu.
+
+    Terminate (DELETE /challenges) hanya MEMATIKAN VM + lepas aturan jaringan; VM-nya
+    tetap ada di Proxmox. Setelah 10 iterasi, VM menumpuk → bersihkan di sini.
+    Reuse ProxmoxService.destroy_vm (proxmoxer .delete(purge=1) = `qm destroy --purge`).
+    """
+    vmids = [v for v in vmids if v]
+    if not vmids:
+        log("Tidak ada VMID untuk di-destroy.")
+        return
+
+    log(f"\n{'═'*52}")
+    log(f"CLEANUP — qm destroy {len(vmids)} VM: {vmids}")
+    log(f"{'═'*52}")
+
+    # Import ditunda agar bagian benchmark (murni HTTP API) tak terpengaruh app internals,
+    # dan kalau import gagal, benchmark tetap selesai (cleanup best-effort).
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        from config.settings import settings
+        from services.proxmox_service import ProxmoxService
+    except Exception as e:
+        log(f"[WARN] Gagal import ProxmoxService: {e}")
+        log(f"  Destroy manual di PVE: qm destroy {' '.join(str(v) for v in vmids)} --purge")
+        return
+
+    svc = ProxmoxService(settings)
+    for vmid in vmids:
+        try:
+            svc.destroy_vm(vmid)
+            log(f"  ✓ VM {vmid} destroyed")
+        except Exception as e:
+            log(f"  ✗ VM {vmid} gagal di-destroy: {e}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -295,10 +335,10 @@ def main():
     parser = argparse.ArgumentParser(description="CTF Deployment Performance Benchmark")
     parser.add_argument("--backend",         default="http://localhost:8000/api/v1",
                         help="Base URL backend API")
-    parser.add_argument("--level-id",        type=int, required=True,
-                        help="ID level yang sudah berstatus ready")
-    parser.add_argument("--team",            required=True,
-                        help="Nama tim yang dipakai untuk setiap iterasi deployment")
+    parser.add_argument("--level-id",        type=int, default=2,
+                        help="ID level yang sudah berstatus ready (default: 2)")
+    parser.add_argument("--team",            default="testteam-A",
+                        help="Nama tim yang dipakai untuk setiap iterasi deployment (default: testteam-A)")
     parser.add_argument("--iterations",      type=int, default=ITERATIONS,
                         help=f"Jumlah iterasi (default: {ITERATIONS})")
     parser.add_argument("--measure-prepare", action="store_true",
@@ -307,6 +347,8 @@ def main():
                         help="Label run (mis. 'with-auth' / 'no-auth'), masuk ke nama file & JSON")
     parser.add_argument("--output",          default=None,
                         help="Path file output JSON (default: tests/results/<timestamp>[_label].json)")
+    parser.add_argument("--keep-vms",        action="store_true",
+                        help="Jangan qm destroy VM setelah benchmark (default: destroy semua)")
     args = parser.parse_args()
 
     BACKEND_URL = args.backend.rstrip("/")
@@ -341,6 +383,14 @@ def main():
     }
     print_summary(results, prepare_time, args.label)
     save_json(results, prepare_time, output_path, args.label, meta)
+
+    # Cleanup: hapus semua VM yang dibuat (kecuali --keep-vms)
+    if not args.keep_vms:
+        vmids = [r.get("vm_id") for r in results if r.get("vm_id")]
+        destroy_vms(vmids)
+    else:
+        vmids = [r.get("vm_id") for r in results if r.get("vm_id")]
+        log(f"--keep-vms aktif, {len(vmids)} VM TIDAK di-destroy: {vmids}")
 
 
 if __name__ == "__main__":
