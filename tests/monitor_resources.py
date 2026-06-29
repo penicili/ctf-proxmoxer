@@ -21,6 +21,7 @@ Penggunaan:
 
 import argparse
 import json
+import os
 import statistics
 import threading
 import time
@@ -37,6 +38,9 @@ SAMPLE_INTERVAL = 1   # detik antar sampel CPU/RAM
 POLL_INTERVAL   = 3   # detik antar polling status
 TIMEOUT         = 600
 PAUSE_BETWEEN   = 5
+
+# Folder output (relatif terhadap lokasi file ini → tests/results)
+RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
 
 
 # Helpers
@@ -161,10 +165,10 @@ def measure_deploy(level_id: int, team: str, monitor: ResourceMonitor) -> tuple[
     monitor.start()
     resp = requests.post(f"{BACKEND_URL}/challenges", json={
         "level_id": level_id,
-        "team_name": team,
+        "team_names": [team],
     }, timeout=10)
     resp.raise_for_status()
-    challenge_id = resp.json()["challenge_id"]
+    challenge_id = resp.json()["results"][0]["challenge_id"]
     log(f"  challenge_id = {challenge_id}")
     poll_challenge(challenge_id, "running")
     samples = monitor.stop()
@@ -228,6 +232,7 @@ def save_json(results: dict, raw: dict, output_path: str):
         "summary":           results,
         "raw_samples":       raw,
     }
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(out, f, indent=2, default=str)
     log(f"Hasil disimpan ke {output_path}")
@@ -248,11 +253,19 @@ def main():
     parser.add_argument("--team",            default="testteam-A")
     parser.add_argument("--measure-prepare", action="store_true",
                         help="Ukur fase prepare sebelum deploy/terminate")
-    parser.add_argument("--output",          default="tests/monitor_resources_results.json")
+    parser.add_argument("--output",          default=None,
+                        help="Path file output JSON (default: tests/results/monitor_<timestamp>.json)")
     args = parser.parse_args()
 
     BACKEND_URL  = args.backend.rstrip("/")
     BACKEND_PORT = args.port
+
+    # Tentukan path output: tests/results/monitor_<timestamp>.json
+    if args.output:
+        output_path = args.output
+    else:
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = os.path.join(RESULTS_DIR, f"monitor_{ts}.json")
 
     # Temukan proses backend
     proc = psutil.Process(args.pid) if args.pid else find_backend_process(BACKEND_PORT)
@@ -289,7 +302,7 @@ def main():
 
     if results:
         print_summary(results)
-        save_json(results, raw, args.output)
+        save_json(results, raw, output_path)
 
 
 if __name__ == "__main__":
