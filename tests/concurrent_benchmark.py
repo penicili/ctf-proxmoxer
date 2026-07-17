@@ -1,17 +1,17 @@
 """
 concurrent_benchmark.py — Uji latency degradation & resource utilization saat
-concurrent provisioning (deploy N tim sekaligus: 5, 10, 20, dst).
+batch provisioning (deploy N tim dalam satu request: 5, 10, 20, dst).
 
 Melengkapi monitor_pve.py (yang mengukur resource per FASE pada satu deploy)
-dengan sudut pandang BEBAN BERSAMAAN: bagaimana latency per-deploy dan CPU/RAM
-host berubah ketika N tim deploy secara bersamaan, dibanding baseline N=1.
+dengan sudut pandang BEBAN BATCH: bagaimana latency per-deploy dan CPU/RAM
+host berubah ketika ukuran batch meningkat, dibanding baseline N=1.
 HostMonitor & get_proxmox() di bawah adalah komponen yang sama dengan
 monitor_pve.py (proxmoxer → nodes(node).status, tanpa SSH).
 
 Untuk tiap level N di --levels:
-    1. Deploy N tim SEKALIGUS (paralel, thread pool) — bukan satu POST dengan
-       team_names berisi N nama — supaya request benar-benar dikirim bersamaan
-       dan mensimulasikan N tim yang mengakses sistem di waktu yang sama.
+    1. Deploy N tim dalam SATU POST dengan team_names. Backend mereservasi VMID
+       secara berurutan dan menjalankan background task secara terkendali untuk
+       mencegah resource exhaustion pada Proxmox dan Ansible.
     2. Monitor CPU/RAM host Proxmox selama fase deploy & terminate berlangsung.
     3. Catat latency tiap tim individual (deploy_server, terminate_server) dan
        makespan batch (dari submit pertama sampai SEMUA tim selesai).
@@ -21,10 +21,10 @@ Di akhir: tabel LATENCY DEGRADATION (mean latency tiap level vs baseline N
 terkecil, dalam % kenaikan) + tabel resource utilization per level.
 
 Penggunaan:
-    # Sweep 1, 5, 10, 20 (default), 1 putaran tiap level:
+    # Sweep batch 1, 5, 10, 20 (default), 1 putaran tiap level:
     python tests/concurrent_benchmark.py --level-id 1
 
-    # Custom level & 3 putaran/level (utk rata-rata & stdev per level):
+    # Replikasi opsional (hanya jika kapasitas infrastruktur mencukupi):
     python tests/concurrent_benchmark.py --level-id 1 --levels 1,5,10,20 --rounds 3
 
     # Tanpa monitoring resource host (kalau proxmoxer/koneksi tak tersedia):
@@ -58,8 +58,9 @@ except Exception:
 
 BACKEND_URL     = "http://localhost:8000/api/v1"
 SAMPLE_INTERVAL = 2      # detik antar sampel CPU/RAM host
-POLL_INTERVAL   = 3      # detik antar polling status deployment
-TIMEOUT         = 600    # detik maksimum menunggu tiap fase
+POLL_INTERVAL   = 15     # detik antar polling status deployment
+TIMEOUT         = 600    # timeout default, dipakai untuk fase terminate
+INITIAL_POLL_DELAY = 120 # jangan poll deploy sebelum dua menit
 PAUSE_BETWEEN   = 5      # detik jeda antar fase / round / level
 REQ_TIMEOUT     = (5, 30)
 
@@ -84,8 +85,19 @@ def dt_diff(start_str, end_str):
         return datetime.fromisoformat(s.rstrip("Z")).replace(tzinfo=timezone.utc)
     return round((parse(end_str) - parse(start_str)).total_seconds(), 2)
 
-def poll_challenge(challenge_id: int, target_status: str) -> dict:
-    deadline = time.monotonic() + TIMEOUT
+def poll_challenge(
+    challenge_id: int,
+    target_status: str,
+    *,
+    initial_delay: int = 0,
+    timeout: int = TIMEOUT,
+) -> dict:
+    if initial_delay:
+        log(f"  challenge {challenge_id} → mulai polling dalam {initial_delay}s")
+        time.sleep(initial_delay)
+    # Timeout dihitung setelah polling dimulai. Dengan begitu item di belakang
+    # antrean memperoleh jendela observasi penuh yang sama dengan item pertama.
+    deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             resp = requests.get(f"{BACKEND_URL}/challenges/{challenge_id}", timeout=REQ_TIMEOUT)
@@ -103,30 +115,64 @@ def poll_challenge(challenge_id: int, target_status: str) -> dict:
         time.sleep(POLL_INTERVAL)
     raise TimeoutError(f"Timeout menunggu status '{target_status}' pada challenge {challenge_id}")
 
-def deploy_one(level_id: int, team: str) -> int:
+def find_existing_batch(level_id: int, teams: list[str]) -> dict[str, int]:
+    """Pulihkan challenge ID bila respons batch sudah hilang di sisi klien."""
+    found: dict[str, int] = {}
+    try:
+        for team in teams:
+            resp = requests.get(
+                f"{BACKEND_URL}/challenges",
+                params={"team": team},
+                timeout=REQ_TIMEOUT,
+            )
+            resp.raise_for_status()
+            challenge = next(
+                (item for item in resp.json().get("challenges", [])
+                 if item.get("level_id") == level_id),
+                None,
+            )
+            if challenge and challenge.get("id"):
+                found[team] = challenge["id"]
+    except requests.RequestException:
+        return {}
+    return found
+
+
+def deploy_batch(level_id: int, teams: list[str]) -> dict[str, int]:
+    """Kirim satu batch sesuai kontrak API dan kembalikan challenge ID per tim."""
     last_err = None
     for attempt in range(5):
         try:
             resp = requests.post(f"{BACKEND_URL}/challenges", json={
                 "level_id":   level_id,
-                "team_names": [team],
+                "team_names": teams,
             }, timeout=REQ_TIMEOUT)
+            if resp.status_code == 409:
+                recovered = find_existing_batch(level_id, teams)
+                if len(recovered) == len(teams):
+                    log("  POST batch konflik setelah retry; memakai deployment yang sudah tercatat")
+                    return recovered
             resp.raise_for_status()
-            break
+            results = resp.json().get("results", [])
+            challenge_ids = {
+                result["team"]: result["challenge_id"]
+                for result in results
+                if not result.get("skipped") and result.get("challenge_id")
+            }
+            missing = [team for team in teams if team not in challenge_ids]
+            if missing:
+                raise RuntimeError(f"Batch deploy tidak membuat challenge untuk: {missing}")
+            return challenge_ids
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
             last_err = e
-            log(f"  POST deploy timeout ({team}, attempt {attempt+1}/5), retry...")
+            recovered = find_existing_batch(level_id, teams)
+            if len(recovered) == len(teams):
+                log("  POST batch timeout; memakai deployment yang sudah tercatat")
+                return recovered
+            log(f"  POST batch timeout (attempt {attempt+1}/5), retry...")
             time.sleep(POLL_INTERVAL)
     else:
-        raise RuntimeError(f"POST /challenges gagal setelah 5x retry: {last_err}")
-    body = resp.json()
-    results = body.get("results", [])
-    if not results:
-        raise RuntimeError(f"Respons deploy tanpa results: {body}")
-    first = results[0]
-    if first.get("skipped"):
-        raise RuntimeError(f"Deploy di-skip: {first.get('skip_reason')}")
-    return first["challenge_id"]
+        raise RuntimeError(f"POST /challenges batch gagal setelah 5x retry: {last_err}")
 
 
 def get_proxmox():
@@ -205,14 +251,16 @@ def summarize_resource(samples: list) -> dict:
     }
 
 
-# Deploy / terminate per-tim (dipanggil dari thread pool)
+# Observasi deploy dan terminasi per-tim
 
-def deploy_and_measure(level_id: int, team: str) -> dict:
-    t0 = time.monotonic()
-    challenge_id = None
+def wait_for_deploy(team: str, challenge_id: int, t0: float) -> dict:
+    """Pantau satu item batch setelah jeda polling yang disengaja."""
     try:
-        challenge_id = deploy_one(level_id, team)
-        data = poll_challenge(challenge_id, "running")
+        data = poll_challenge(
+            challenge_id,
+            "running",
+            initial_delay=INITIAL_POLL_DELAY,
+        )
         t1 = time.monotonic()
         return {
             "team":          team,
@@ -264,18 +312,26 @@ def run_level_round(level_id: int, n: int, round_num: int, total_rounds: int,
     teams = [f"{team_prefix}-N{n}-r{round_num}-{i:02d}" for i in range(1, n + 1)]
 
     log(f"\n{'═'*56}")
-    log(f"LEVEL N={n} — round {round_num}/{total_rounds} ({n} tim sekaligus)")
+    log(f"BATCH N={n} — round {round_num}/{total_rounds} ({n} tim, satu POST)")
     log(f"{'═'*56}")
 
-    # ── Deploy N tim paralel, monitor resource host selama fase ini ────
+    # ── Deploy satu batch N tim, monitor resource host selama fase ini ──
     if monitor:
         monitor.start()
-    t_start = time.monotonic()
     deploy_results = []
-    with ThreadPoolExecutor(max_workers=n) as executor:
-        futures = [executor.submit(deploy_and_measure, level_id, team) for team in teams]
-        for fut in as_completed(futures):
-            deploy_results.append(fut.result())
+    t_start = time.monotonic()
+    try:
+        challenge_ids = deploy_batch(level_id, teams)
+        # Polling dibuat berantai. Item berikutnya baru disentuh 120 detik
+        # setelah item sebelumnya mencapai status terminal, sehingga backend
+        # tidak dibebani polling untuk VM yang masih berada di antrean.
+        for team in teams:
+            deploy_results.append(wait_for_deploy(team, challenge_ids[team], t_start))
+    except Exception as e:
+        deploy_results = [
+            {"team": team, "challenge_id": None, "vm_id": None, "error": str(e)}
+            for team in teams
+        ]
     makespan_deploy = round(time.monotonic() - t_start, 2)
     resource_deploy = summarize_resource(monitor.stop()) if monitor else None
 
@@ -291,18 +347,21 @@ def run_level_round(level_id: int, n: int, round_num: int, total_rounds: int,
     term_results = []
     makespan_terminate = None
     resource_terminate = None
-    if ok:
+    # Hasil polling yang error tetap mungkin punya VM hidup; terminate semua
+    # deployment yang sudah tercatat agar tidak meninggalkan orphan.
+    cleanup_candidates = [r for r in deploy_results if r.get("challenge_id")]
+    if cleanup_candidates:
         if monitor:
             monitor.start()
         t_start = time.monotonic()
-        with ThreadPoolExecutor(max_workers=len(ok)) as executor:
-            futures = [executor.submit(terminate_and_measure, r) for r in ok]
+        with ThreadPoolExecutor(max_workers=len(cleanup_candidates)) as executor:
+            futures = [executor.submit(terminate_and_measure, r) for r in cleanup_candidates]
             for fut in as_completed(futures):
                 term_results.append(fut.result())
         makespan_terminate = round(time.monotonic() - t_start, 2)
         resource_terminate = summarize_resource(monitor.stop()) if monitor else None
         ok_term = [r for r in term_results if not r.get("error")]
-        log(f"  TERMINATE selesai — makespan {makespan_terminate}s | sukses {len(ok_term)}/{len(ok)}")
+        log(f"  TERMINATE selesai — makespan {makespan_terminate}s | sukses {len(ok_term)}/{len(cleanup_candidates)}")
 
     return {
         "n":                  n,
@@ -365,7 +424,7 @@ def print_degradation_table(level_summaries: list, baseline_idle_ram: float | No
     baseline_lat = baseline["deploy_latency"]["mean"]
 
     print(f"\n{'═'*88}")
-    print("LATENCY DEGRADATION — concurrent deploy vs baseline N={}".format(baseline["n"]))
+    print("LATENCY DEGRADATION — batch deploy vs baseline N={}".format(baseline["n"]))
     print(f"{'═'*88}")
     print(f"{'N':>4} {'Sukses':>8} {'Latency mean':>13} {'Stdev':>8} {'Δ vs baseline':>14} {'Makespan mean':>14}")
     print(f"{'':>4} {'':>8} {'(s)':>13} {'(s)':>8} {'(%)':>14} {'(s)':>14}")
@@ -470,7 +529,7 @@ def main():
     parser = argparse.ArgumentParser(description="Concurrent Provisioning: Latency Degradation & Resource Utilization")
     parser.add_argument("--backend",     default="http://localhost:8000/api/v1")
     parser.add_argument("--level-id",    type=int, default=2, help="ID level challenge yang sudah ready")
-    parser.add_argument("--levels",      default="1,5,10,20", help="Daftar N concurrent, dipisah koma (default: 1,5,10,20 — 1=baseline, sisanya sesuai contoh reviewer)")
+    parser.add_argument("--levels",      default="1,5,10,20", help="Daftar ukuran batch N, dipisah koma (default: 1,5,10,20 — 1=baseline)")
     parser.add_argument("--rounds",      type=int, default=1, help="Jumlah putaran tiap level (default: 1)")
     parser.add_argument("--team-prefix", default="load", help="Prefix nama tim (default: load)")
     parser.add_argument("--label",       default=None)
@@ -541,7 +600,7 @@ def main():
         # Safety net: level yang sedang berjalan saat interrupt belum sempat
         # masuk 'level_summaries' / cleanup di atas, jadi sisir ulang semua VM
         # dari all_rounds yang terkumpul sejauh ini (termasuk deploy yang gagal,
-        # karena vm_id-nya sudah ditangkap juga oleh deploy_and_measure).
+            # karena vm_id-nya sudah ditangkap juga oleh wait_for_deploy).
         if not args.keep_vms:
             remaining_vmids = [r.get("vm_id") for rd in all_rounds for r in rd["deploy_results"] if r.get("vm_id")]
             if remaining_vmids:
