@@ -30,12 +30,12 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
 
     # Build access info jika VM sudah running
     access_ssh = None
-    access_http = None
+    access_https = None
     if dep and dep.vm_id and dep.status == DeploymentStatus.RUNNING:
         ssh_port = settings.SSH_PORT_BASE + dep.vm_id
-        http_port = settings.HTTP_PORT_BASE + dep.vm_id
+        https_port = settings.HTTPS_PORT_BASE + dep.vm_id
         access_ssh = f"ssh user@{settings.PVE_PUBLIC_IP} -p {ssh_port}"
-        access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
+        access_https = f"https://{settings.PVE_PUBLIC_IP}:{https_port}"
 
     is_running = dep and dep.status == DeploymentStatus.RUNNING
 
@@ -57,7 +57,7 @@ def _build_response(challenge: Challenge) -> ChallengeResponse:
         started_at=dep.started_at if dep else None,
         terminated_at=dep.terminated_at if dep else None,
         access_ssh=access_ssh,
-        access_http=access_http,
+        access_http=access_https,
         vm_username=challenge.team if is_running else None,
         vm_password=challenge.vm_password if is_running else None,
     )

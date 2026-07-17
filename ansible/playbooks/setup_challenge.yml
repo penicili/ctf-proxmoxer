@@ -86,12 +86,37 @@
         group:   www-data
         mode:    "0640"
 
+    - name: Ensure OpenSSL is installed
+      ansible.builtin.package:
+        name: openssl
+        state: present
+
+    - name: Create self-signed certificate for the public PVE IP
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -x509 -nodes -newkey rsa:2048 -sha256 -days 365
+          -keyout /etc/nginx/challenge-selfsigned.key
+          -out /etc/nginx/challenge-selfsigned.crt
+          -subj /CN={{ pve_public_ip }}
+          -addext subjectAltName=IP:{{ pve_public_ip }}
+        creates: /etc/nginx/challenge-selfsigned.crt
+
+    - name: Restrict self-signed private key permissions
+      ansible.builtin.file:
+        path: /etc/nginx/challenge-selfsigned.key
+        owner: root
+        group: root
+        mode: "0600"
+
     - name: Configure nginx reverse proxy with basic auth
       ansible.builtin.copy:
         dest: /etc/nginx/sites-available/challenge
         content: |
           server {
-              listen 80;
+              listen 443 ssl;
+              ssl_certificate     /etc/nginx/challenge-selfsigned.crt;
+              ssl_certificate_key /etc/nginx/challenge-selfsigned.key;
+              ssl_protocols       TLSv1.2 TLSv1.3;
 
               auth_basic "CTF Challenge";
               auth_basic_user_file /etc/nginx/.htpasswd;
@@ -121,10 +146,10 @@
         state:   restarted
         enabled: true
 
-    - name: Wait for nginx on port 80
+    - name: Wait for nginx on port 443
       ansible.builtin.wait_for:
         host:    127.0.0.1
-        port:    80
+        port:    443
         delay:   1
         timeout: 30
 

@@ -1,7 +1,7 @@
 import os
 from typing import List, Optional
 from pydantic_settings import BaseSettings
-from pydantic import Field, ConfigDict
+from pydantic import AliasChoices, ConfigDict, Field
 
 
 class Settings(BaseSettings):
@@ -73,7 +73,10 @@ class Settings(BaseSettings):
     # Network — NAT port forwarding
     PVE_PUBLIC_IP: str = "192.168.1.102"
     SSH_PORT_BASE: int = 22000
-    HTTP_PORT_BASE: int = 8000
+    HTTPS_PORT_BASE: int = Field(
+        default=8000,
+        validation_alias=AliasChoices("HTTPS_PORT_BASE", "HTTP_PORT_BASE"),
+    )
     
     # Docker Registry + CI Runner
     REGISTRY_HOST: str = "10.10.10.5:5000"

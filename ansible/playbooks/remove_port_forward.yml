@@ -5,7 +5,7 @@
 # Required extra_vars:
 #   vm_ip:          IP internal VM (e.g. 10.10.10.201)
 #   ssh_port:       Port SSH publik (e.g. 22201)
-#   http_port:      Port HTTP publik (e.g. 80201)
+#   https_port:     Port HTTPS publik (e.g. 80201)
 #   pve_public_ip:  IP publik PVE host (e.g. 192.168.1.102)
 
 - name: Remove port forwarding for challenge VM
@@ -26,13 +26,25 @@
         comment: "ctf-forward-ssh-{{ vm_ip }}"
         state: absent
 
-    - name: Remove HTTP DNAT rule
+    - name: Remove HTTPS DNAT rule
       ansible.builtin.iptables:
         table: nat
         chain: PREROUTING
         protocol: tcp
         destination: "{{ pve_public_ip }}"
-        destination_port: "{{ http_port }}"
+        destination_port: "{{ https_port }}"
+        jump: DNAT
+        to_destination: "{{ vm_ip }}:443"
+        comment: "ctf-forward-https-{{ vm_ip }}"
+        state: absent
+
+    - name: Remove legacy HTTP DNAT rule
+      ansible.builtin.iptables:
+        table: nat
+        chain: PREROUTING
+        protocol: tcp
+        destination: "{{ pve_public_ip }}"
+        destination_port: "{{ https_port }}"
         jump: DNAT
         to_destination: "{{ vm_ip }}:80"
         comment: "ctf-forward-http-{{ vm_ip }}"
@@ -48,7 +60,17 @@
         comment: "ctf-allow-ssh-{{ vm_ip }}"
         state: absent
 
-    - name: Remove FORWARD rule for HTTP
+    - name: Remove FORWARD rule for HTTPS
+      ansible.builtin.iptables:
+        chain: FORWARD
+        protocol: tcp
+        destination: "{{ vm_ip }}"
+        destination_port: "443"
+        jump: ACCEPT
+        comment: "ctf-allow-https-{{ vm_ip }}"
+        state: absent
+
+    - name: Remove legacy HTTP FORWARD rule
       ansible.builtin.iptables:
         chain: FORWARD
         protocol: tcp

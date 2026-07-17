@@ -176,7 +176,7 @@ Admin memicu prepare → backend menjalankan Ansible di Image Builder:
 Admin deploy challenge untuk tim → backend:
 1. Clone base template VM di Proxmox
 2. Tunggu VM boot + cloud-init (~30 detik)
-3. Setup port forwarding iptables di PVE host
+3. Setup port forwarding iptables di PVE host ke HTTPS (`VM:443`)
 4. Ansible SSH ke VM (via ProxyJump melalui PVE):
    - `git clone` repo challenge (untuk `docker-compose.yml`)
    - Tulis `.env` berisi `FLAG`, `REGISTRY_HOST`, `IMAGE_TAG`
@@ -207,3 +207,15 @@ Lihat `.env.example` untuk daftar lengkap. Variable penting:
 | `CTFD_API_TOKEN` | API token CTFd untuk finalize challenge |
 | `SSH_KEY_PATH` | Path SSH key untuk akses PVE dan VM |
 | `VM_SSH_USERNAME` | Username cloud-init di VM challenge |
+| `HTTPS_PORT_BASE` | Basis port publik HTTPS; URL challenge memakai `HTTPS_PORT_BASE + VMID` |
+
+## HTTPS Challenge
+
+Setiap VM challenge membuat sertifikat self-signed dengan IP `PVE_PUBLIC_IP` sebagai
+Subject Alternative Name (SAN), lalu mengekspos Nginx pada port `443`. Peserta
+mengakses challenge melalui `https://PVE_PUBLIC_IP:(HTTPS_PORT_BASE + VMID)` dan
+perlu menerima peringatan sertifikat di browser. Traffic, termasuk HTTP Basic Auth,
+tetap terenkripsi setelah peringatan tersebut diterima.
+
+`HTTP_PORT_BASE` masih diterima sebagai nama konfigurasi lama agar deployment yang
+sudah ada tidak perlu segera mengubah file `.env`.

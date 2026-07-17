@@ -28,7 +28,7 @@ class ChallengeResponse(BaseModel):
     # CTFd challenge ID (set setelah finalize)
     ctfd_id: Optional[int] = None
 
-    # Access info (NAT port forwarding)
+    # access_http keeps its existing response name and now contains an HTTPS URL.
     access_ssh: Optional[str] = None
     access_http: Optional[str] = None
 

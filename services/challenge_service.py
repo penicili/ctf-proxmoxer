@@ -116,7 +116,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
 
         # ── Step 3: Setup port forwarding di PVE host via Ansible ─────────
         ssh_port = settings.SSH_PORT_BASE + vm_result.vmid
-        http_port = settings.HTTP_PORT_BASE + vm_result.vmid
+        https_port = settings.HTTPS_PORT_BASE + vm_result.vmid
 
         ansible_service.run_playbook(
             playbook="setup_port_forward.yml",
@@ -125,11 +125,11 @@ def deploy_challenge_bg(challenge_id: int) -> None:
             extra_vars={
                 "vm_ip":     deployment.vm_ip,
                 "ssh_port":  ssh_port,
-                "http_port": http_port,
+                "https_port": https_port,
                 "pve_public_ip": settings.PVE_PUBLIC_IP,
             },
         )
-        logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTP={http_port}")
+        logger.info(f"[deploy_bg] Port forwarding set: SSH={ssh_port}, HTTPS={https_port}")
 
         # ── Step 4: Setup challenge di VM via Ansible (docker compose up)
         # Generate Apache MD5 hash untuk nginx .htpasswd
@@ -151,6 +151,7 @@ def deploy_challenge_bg(challenge_id: int) -> None:
                 "compose_content":   level.compose_content if level else "",
                 "vm_user":           challenge.team,
                 "vm_password_hash":  vm_password_hash,
+                "pve_public_ip":     settings.PVE_PUBLIC_IP,
             },
         )
         logger.info(f"[deploy_bg] Ansible setup_challenge done for challenge {challenge_id}")
@@ -162,8 +163,8 @@ def deploy_challenge_bg(challenge_id: int) -> None:
         logger.info(f"[deploy_bg] Challenge {challenge_id} is now RUNNING")
 
         # ── Step 6: Buat challenge + flag di CTFd via API ───────────────
-        access_http = f"http://{settings.PVE_PUBLIC_IP}:{http_port}"
-        ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access_http)
+        access_https = f"https://{settings.PVE_PUBLIC_IP}:{https_port}"
+        ctfd_id = _finalize_ctfd_challenge(settings, challenge, level, access_https)
         if ctfd_id:
             challenge.ctfd_id = ctfd_id
             db.commit()
@@ -224,7 +225,7 @@ def terminate_challenge_bg(challenge_id: int) -> None:
         if deployment.vm_id and deployment.vm_ip:
             try:
                 ssh_port = settings.SSH_PORT_BASE + deployment.vm_id
-                http_port = settings.HTTP_PORT_BASE + deployment.vm_id
+                https_port = settings.HTTPS_PORT_BASE + deployment.vm_id
                 ansible_service.run_playbook(
                     playbook="remove_port_forward.yml",
                     hosts=settings.PROXMOX_HOST,
@@ -232,7 +233,7 @@ def terminate_challenge_bg(challenge_id: int) -> None:
                     extra_vars={
                         "vm_ip":     deployment.vm_ip,
                         "ssh_port":  ssh_port,
-                        "http_port": http_port,
+                        "https_port": https_port,
                         "pve_public_ip": settings.PVE_PUBLIC_IP,
                     },
                 )
